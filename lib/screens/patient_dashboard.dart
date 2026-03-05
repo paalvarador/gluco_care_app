@@ -1,94 +1,85 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:gluco_care_app/screens/add_entry_modal.dart';
-import '../services/auth_service.dart';
+import 'package:intl/intl.dart'; // Asegúrate de agregar intl en tu pubspec.yaml
+import 'add_entry_modal.dart';
 
 class PatientDashboard extends StatelessWidget {
   const PatientDashboard({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text("Mi Control de Glucosa"),
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
-            onPressed: () async {
-              // Implementaremos el logout después
-            },
-          ),
+            onPressed: () => FirebaseAuth.instance.signOut(),
+          )
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              "¡Hola de nuevo!",
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 20),
+      body: StreamBuilder<QuerySnapshot>(
+        // Escuchamos los cambios en la colección glucose_logs para este usuario
+        stream: FirebaseFirestore.instance
+            .collection('glucose_logs')
+            .where('user_id', isEqualTo: user?.uid)
+            .orderBy('created_at', descending: true)
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.hasError) return const Center(child: Text("Error al cargar datos"));
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
 
-            // Tarjeta de Último Registro
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.blue.shade50,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.blue.shade200),
-              ),
-              child: Column(
-                children: [
-                  const Text(
-                    "Última medición",
-                    style: TextStyle(color: Colors.blueGrey),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    "115 mg/dL", // Esto vendrá de Firestore luego
-                    style: TextStyle(
-                      fontSize: 40,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue.shade900,
-                    ),
-                  ),
-                  const Text(
-                    "Hace 2 horas (Ayunas)",
-                    style: TextStyle(fontSize: 12),
-                  ),
-                ],
-              ),
-            ),
+          final docs = snapshot.data!.docs;
 
-            const SizedBox(height: 30),
-            const Text(
-              "Registros de hoy",
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 10),
+          if (docs.isEmpty) {
+            return const Center(
+              child: Text("Aún no tienes registros.\n¡Presiona el botón + para empezar!",
+                  textAlign: TextAlign.center),
+            );
+          }
 
-            // Lista simple de ejemplo
-            _buildLogTile("08:30 AM", "110 mg/dL", "Ayunas"),
-            _buildLogTile("02:00 PM", "145 mg/dL", "Después de almuerzo"),
-          ],
-        ),
-      ),
+          // Tomamos la última medida para la tarjeta superior
+          final lastEntry = docs.first.data() as Map<String, dynamic>;
 
-      // BOTÓN GRANDE PARA REGISTRAR
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          showModalBottomSheet(
-            context: context,
-            isScrollControlled: true,
-            shape: const RoundedRectangleBorder(
-              borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text("¡Hola de nuevo!",
+                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 20),
+                
+                // TARJETA DINÁMICA DE ÚLTIMO REGISTRO
+                _buildLatestSummary(lastEntry),
+                
+                const SizedBox(height: 30),
+                const Text("Historial de registros", 
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 10),
+                
+                // LISTA DINÁMICA
+                ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: docs.length,
+                  itemBuilder: (context, index) {
+                    final data = docs[index].data() as Map<String, dynamic>;
+                    return _buildLogTile(data);
+                  },
+                ),
+              ],
             ),
-            builder: (context) => const AddEntryModal(),
           );
         },
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _showAddEntry(context),
         label: const Text("Nuevo Registro"),
         icon: const Icon(Icons.add),
         backgroundColor: Colors.blueAccent,
@@ -96,15 +87,65 @@ class PatientDashboard extends StatelessWidget {
     );
   }
 
-  Widget _buildLogTile(String time, String value, String note) {
+  Widget _buildLatestSummary(Map<String, dynamic> data) {
+    final int value = data['value'] ?? 0;
+    final bool isHigh = data['is_high_risk'] ?? false;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: isHigh ? Colors.red.shade50 : Colors.blue.shade50,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: isHigh ? Colors.red.shade200 : Colors.blue.shade200),
+      ),
+      child: Column(
+        children: [
+          Text("Última medición", 
+              style: TextStyle(color: isHigh ? Colors.red.shade900 : Colors.blueGrey)),
+          const SizedBox(height: 10),
+          Text(
+            "$value mg/dL",
+            style: TextStyle(
+              fontSize: 40, 
+              fontWeight: FontWeight.bold, 
+              color: isHigh ? Colors.red.shade900 : Colors.blue.shade900
+            ),
+          ),
+          Text(
+            isHigh ? "Nivel Elevado" : "Nivel Normal",
+            style: TextStyle(color: isHigh ? Colors.red : Colors.green, fontWeight: FontWeight.bold),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLogTile(Map<String, dynamic> data) {
+    final DateTime date = (data['created_at'] as Timestamp?)?.toDate() ?? DateTime.now();
+    final String timeFormatted = DateFormat('hh:mm a').format(date);
+    final bool isHigh = data['is_high_risk'] ?? false;
+
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       child: ListTile(
-        leading: const Icon(Icons.bloodtype, color: Colors.redAccent),
-        title: Text(value, style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Text(note),
-        trailing: Text(time, style: const TextStyle(color: Colors.grey)),
+        leading: Icon(Icons.bloodtype, color: isHigh ? Colors.red : Colors.green),
+        title: Text("${data['value']} mg/dL", 
+            style: const TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: Text(data['timing'] ?? ""),
+        trailing: Text(timeFormatted, style: const TextStyle(color: Colors.grey)),
       ),
+    );
+  }
+
+  void _showAddEntry(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
+      ),
+      builder: (context) => const AddEntryModal(),
     );
   }
 }
