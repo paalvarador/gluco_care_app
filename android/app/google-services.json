@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "733119792621",
+    "project_id": "glucocareapp-cb8c6",
+    "storage_bucket": "glucocareapp-cb8c6.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:733119792621:android:a2fc4d6f73d856d4bc53e4",
+        "android_client_info": {
+          "package_name": "com.example.gluco_care_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD8ChchCuvJ5enS7DL_x6mlos8I8gXpRGY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
