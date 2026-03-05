@@ -7,12 +7,17 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:733119792621:android:a2fc4d6f73d856d4bc53e4",
+        "mobilesdk_app_id": "1:733119792621:android:0ae988bfab0c2cf3bc53e4",
         "android_client_info": {
-          "package_name": "com.example.gluco_care_app"
+          "package_name": "com.ardev.glucocareapp"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "733119792621-g7hnf8utvegosd2jkn1cfb6mcudut5pn.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyD8ChchCuvJ5enS7DL_x6mlos8I8gXpRGY"
@@ -20,7 +25,55 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "733119792621-g7hnf8utvegosd2jkn1cfb6mcudut5pn.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "733119792621-ijujh612u2akak0bdfme6g87jp8jpdaf.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.glucoCareApp"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:733119792621:android:a2fc4d6f73d856d4bc53e4",
+        "android_client_info": {
+          "package_name": "com.example.gluco_care_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "733119792621-g7hnf8utvegosd2jkn1cfb6mcudut5pn.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD8ChchCuvJ5enS7DL_x6mlos8I8gXpRGY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "733119792621-g7hnf8utvegosd2jkn1cfb6mcudut5pn.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "733119792621-ijujh612u2akak0bdfme6g87jp8jpdaf.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.glucoCareApp"
+              }
+            }
+          ]
         }
       }
     }
