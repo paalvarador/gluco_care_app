@@ -1,4 +1,4 @@
-package com.example.gluco_care_app
+package com.ardev.glucocareapp
 
 import io.flutter.embedding.android.FlutterActivity
 
