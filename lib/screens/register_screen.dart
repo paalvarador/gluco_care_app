@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:gluco_care_app/screens/patient_dashboard.dart';
-import '../services/auth_service.dart';
 
 class RegisterScreen extends StatefulWidget {
-  final String role; // Recibe 'patient' o 'caregiver'
-  const RegisterScreen({super.key, required this.role});
+  const RegisterScreen({super.key});
 
   @override
   State<RegisterScreen> createState() => _RegisterScreenState();
@@ -12,153 +9,113 @@ class RegisterScreen extends StatefulWidget {
 
 class _RegisterScreenState extends State<RegisterScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _nameController = TextEditingController();
-  bool _isLoading = false;
-
-  // Maneja el registro tradicional con email
-  void _handleRegister() async {
-    if (_formKey.currentState!.validate()) {
-      setState(() => _isLoading = true);
-
-      final user = await AuthService().registerWithEmail(
-        _emailController.text.trim(),
-        _passwordController.text.trim(),
-        _nameController.text.trim(),
-        widget.role,
-      );
-
-      _finishAuth(user);
-    }
-  }
-
-  // Maneja el inicio de sesión con Google
-  void _handleGoogleSignIn() async {
-    setState(() => _isLoading = true);
-
-    final user = await AuthService().signInWithGoogle(widget.role);
-
-    _finishAuth(user);
-  }
-
-  // Lógica común al terminar la autenticación
-  void _finishAuth(user) {
-    if (!mounted) return;
-    setState(() => _isLoading = false);
-
-    if (user != null) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const PatientDashboard()),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Ocurrió un error. Por favor, intenta de nuevo."),
-        ),
-      );
-    }
-  }
+  bool _isPasswordVisible = false;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        title: Text(
-          "Registro: ${widget.role == 'patient' ? 'Paciente' : 'Cuidador'}",
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios, color: Colors.blue),
+          onPressed: () => Navigator.pop(context),
         ),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(24.0),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 30),
         child: Form(
           key: _formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              children: [
-                TextFormField(
-                  controller: _nameController,
-                  decoration: const InputDecoration(
-                    labelText: "Nombre Completo",
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.person_outline),
-                  ),
-                  validator: (val) => val!.isEmpty ? "Ingresa tu nombre" : null,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                "Crear Cuenta ✨",
+                style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.blue),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                "Únete a Gluco Care y empieza a monitorear lo que más importa.",
+                style: TextStyle(fontSize: 16, color: Colors.grey),
+              ),
+              const SizedBox(height: 40),
+
+              // Campo de Nombre Completo
+              TextFormField(
+                controller: _nameController,
+                decoration: InputDecoration(
+                  labelText: "Nombre Completo",
+                  prefixIcon: const Icon(Icons.person_outline),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
                 ),
-                const SizedBox(height: 15),
-                TextFormField(
-                  controller: _emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(
-                    labelText: "Email",
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.email_outlined),
-                  ),
-                  validator: (val) => val!.isEmpty ? "Ingresa un email" : null,
+                validator: (val) => val!.isEmpty ? "Ingresa tu nombre" : null,
+              ),
+              const SizedBox(height: 20),
+
+              // Campo de Email
+              TextFormField(
+                controller: _emailController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: InputDecoration(
+                  labelText: "Email",
+                  prefixIcon: const Icon(Icons.email_outlined),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
                 ),
-                const SizedBox(height: 15),
-                TextFormField(
-                  controller: _passwordController,
-                  decoration: const InputDecoration(
-                    labelText: "Contraseña",
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.lock_outline),
+                validator: (val) => !val!.contains("@") ? "Email inválido" : null,
+              ),
+              const SizedBox(height: 20),
+
+              // Campo de Password
+              TextFormField(
+                controller: _passwordController,
+                obscureText: !_isPasswordVisible,
+                decoration: InputDecoration(
+                  labelText: "Contraseña",
+                  prefixIcon: const Icon(Icons.lock_outline),
+                  suffixIcon: IconButton(
+                    icon: Icon(_isPasswordVisible ? Icons.visibility : Icons.visibility_off),
+                    onPressed: () => setState(() => _isPasswordVisible = !_isPasswordVisible),
                   ),
-                  obscureText: true,
-                  validator: (val) =>
-                      val!.length < 6 ? "Mínimo 6 caracteres" : null,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
                 ),
-                const SizedBox(height: 30),
+                validator: (val) => val!.length < 6 ? "Mínimo 6 caracteres" : null,
+              ),
+              const SizedBox(height: 40),
 
-                if (_isLoading)
-                  const CircularProgressIndicator()
-                else ...[
-                  // Botón de Registro por Email
-                  ElevatedButton(
-                    onPressed: _handleRegister,
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size(double.infinity, 50),
-                      backgroundColor: Colors.blueAccent,
-                      foregroundColor: Colors.white,
-                    ),
-                    child: const Text(
-                      "Crear Cuenta",
-                      style: TextStyle(fontSize: 16),
-                    ),
+              // Botón Registrarse
+              ElevatedButton(
+                onPressed: () {
+                  if (_formKey.currentState!.validate()) {
+                    // Aquí llamaremos a la lógica de registro manual
+                    // Después de registrar, el AuthWrapper detectará el nuevo usuario
+                    // y lo mandará a la pantalla de selección de rol.
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue.shade800,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(double.infinity, 55),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                  elevation: 5,
+                ),
+                child: const Text("REGISTRARSE", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              ),
+              const SizedBox(height: 20),
+              
+              Center(
+                child: TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text(
+                    "¿Ya tienes cuenta? Inicia sesión",
+                    style: TextStyle(color: Colors.blue, fontWeight: FontWeight.w600),
                   ),
-
-                  const SizedBox(height: 20),
-
-                  // Divisor visual
-                  const Row(
-                    children: [
-                      Expanded(child: Divider()),
-                      Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 10),
-                        child: Text("O", style: TextStyle(color: Colors.grey)),
-                      ),
-                      Expanded(child: Divider()),
-                    ],
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  // BOTÓN DE GOOGLE
-                  OutlinedButton.icon(
-                    onPressed: _handleGoogleSignIn,
-                    icon: Image.network(
-                      'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/1200px-Google_%22G%22_logo.svg.png',
-                      height: 24,
-                    ),
-                    label: const Text("Continuar con Google"),
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size(double.infinity, 50),
-                      side: const BorderSide(color: Colors.grey),
-                    ),
-                  ),
-                ],
-              ],
-            ),
+                ),
+              ),
+            ],
           ),
         ),
       ),

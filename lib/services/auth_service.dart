@@ -42,54 +42,40 @@ class AuthService {
     }
   }
 
-  Future<User?> signInWithGoogle(String role) async {
+  Future<User?> signInWithGoogle() async {
     try {
-      // 1. Iniciar el flujo de inicio de sesión de Google
       final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
-      if (googleUser == null) return null; // El usuario canceló la operación
+      if (googleUser == null) return null;
 
-      // 2. Obtener los detalles de autenticación de la solicitud
       final GoogleSignInAuthentication googleAuth =
           await googleUser.authentication;
-
-      // 3. Crear una nueva credencial
       final AuthCredential credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
 
-      // 4. Iniciar sesión en Firebase con la credencial de Google
       UserCredential result = await _auth.signInWithCredential(credential);
-      User? user = result.user;
-
-      if (user != null) {
-        // 5. Verificar si el usuario ya existe en Firestore con un tiempo límite de 10 segundos
-        // Esto evita que la app se quede cargando infinitamente si hay un error de red
-        final userDoc = await _db
-            .collection('users')
-            .doc(user.uid)
-            .get()
-            .timeout(const Duration(seconds: 10));
-
-        if (!userDoc.exists) {
-          // 6. Si es un usuario nuevo, guardamos su perfil con el rol seleccionado (patient/caregiver)
-          await _db.collection('users').doc(user.uid).set({
-            'uid': user.uid,
-            'full_name': user.displayName ?? 'Usuario',
-            'email': user.email,
-            'role': role, //
-            'subscription_status': 'trial', //
-            'trial_end_date': DateTime.now().add(const Duration(days: 7)), //
-            'created_at': FieldValue.serverTimestamp(), //
-            'customer_id': '', // Para futura integración con RevenueCat
-          });
-        }
-      }
-      return user;
+      return result.user;
     } catch (e) {
-      // Log del error para depuración
-      debugPrint("Error en signInWithGoogle: ${e.toString()}");
+      debugPrint("Error: $e");
       return null;
     }
+  }
+
+  // Nueva función para asignar rol solo a usuarios nuevos
+  Future<void> setUserRole(
+    String uid,
+    String role,
+    String email,
+    String name,
+  ) async {
+    await _db.collection('users').doc(uid).set({
+      'uid': uid,
+      'full_name': name,
+      'email': email,
+      'role': role,
+      'subscription_status': 'trial',
+      'created_at': FieldValue.serverTimestamp(),
+    });
   }
 }

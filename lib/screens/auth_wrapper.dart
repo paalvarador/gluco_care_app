@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'role_selection_screen.dart';
+import 'package:gluco_care_app/screens/caregiver_dashboard.dart';
+import 'package:gluco_care_app/screens/login_screen.dart';
+import 'package:gluco_care_app/screens/role_selection_screen.dart';
 import 'patient_dashboard.dart';
 
 class AuthWrapper extends StatelessWidget {
@@ -12,40 +14,23 @@ class AuthWrapper extends StatelessWidget {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
-        // 1. Si está cargando el estado de la conexión
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
-        }
+        if (snapshot.connectionState == ConnectionState.waiting) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
-        // 2. Si NO hay un usuario logueado, vamos a la selección de rol
-        if (!snapshot.hasData) {
-          return const RoleSelectionScreen();
-        }
+        if (!snapshot.hasData) return const LoginScreen(); // Nadie logueado -> Login
 
-        // 3. Si HAY un usuario, consultamos su rol en Firestore
         return FutureBuilder<DocumentSnapshot>(
-          future: FirebaseFirestore.instance
-              .collection('users')
-              .doc(snapshot.data!.uid)
-              .get(),
-          builder: (context, userSnapshot) {
-            if (userSnapshot.connectionState == ConnectionState.waiting) {
-              return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          future: FirebaseFirestore.instance.collection('users').doc(snapshot.data!.uid).get(),
+          builder: (context, userSnap) {
+            if (userSnap.connectionState == ConnectionState.waiting) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+
+            // Si el usuario existe pero no tiene rol en Firestore -> Pantalla de elegir rol
+            if (userSnap.hasData && !userSnap.data!.exists) {
+              return const RoleSelectionScreen(); 
             }
 
-            if (userSnapshot.hasData && userSnapshot.data!.exists) {
-              String role = userSnapshot.data!.get('role');
-
-              if (role == 'patient') {
-                return const PatientDashboard();
-              } else {
-                // Aquí irá el Dashboard del Cuidador cuando lo creemos
-                return const Scaffold(body: Center(child: Text("Panel de Cuidador (En construcción)")));
-              }
-            }
-
-            // En caso de error o si el documento no existe
-            return const RoleSelectionScreen();
+            // Si ya tiene rol, mandarlo a su dashboard
+            String role = userSnap.data!.get('role');
+            return role == 'patient' ? const PatientDashboard() : const CaregiverDashboard();
           },
         );
       },

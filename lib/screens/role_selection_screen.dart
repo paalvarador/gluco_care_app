@@ -29,7 +29,7 @@ class RoleSelectionScreen extends StatelessWidget {
                 icon: Icons.person_pin_rounded,
                 color: Colors.blueAccent,
                 onTap: () {
-                  Navigator.push(context, MaterialPageRoute(builder: (context) => const RegisterScreen(role: 'patient')));
+                  Navigator.push(context, MaterialPageRoute(builder: (context) => const RegisterScreen()));
                 },
               ),
               
@@ -43,7 +43,7 @@ class RoleSelectionScreen extends StatelessWidget {
                 icon: Icons.favorite_rounded,
                 color: Colors.redAccent,
                 onTap: () {
-                  Navigator.push(context, MaterialPageRoute(builder: (context) => const RegisterScreen(role: 'caregiver')));
+                  Navigator.push(context, MaterialPageRoute(builder: (context) => const RegisterScreen()));
                 },
               ),
             ],

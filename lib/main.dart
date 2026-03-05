@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:gluco_care_app/screens/auth_wrapper.dart';
-import 'screens/role_selection_screen.dart'; // Importa tu pantalla
+import 'package:gluco_care_app/screens/welcome_screen.dart';
 import 'firebase_options.dart';
 
 void main() async {
@@ -21,7 +21,7 @@ class MyApp extends StatelessWidget {
       title: 'GlucoCare',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(primarySwatch: Colors.blue, useMaterial3: true),
-      home: const AuthWrapper(), // Iniciamos con la selección
+      home: WelcomeScreen(), // Iniciamos con la selección
     );
   }
 }

@@ -18,7 +18,7 @@ class PatientDashboard extends StatelessWidget {
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () => FirebaseAuth.instance.signOut(),
-          )
+          ),
         ],
       ),
       body: StreamBuilder<QuerySnapshot>(
@@ -29,7 +29,17 @@ class PatientDashboard extends StatelessWidget {
             .orderBy('created_at', descending: true)
             .snapshots(),
         builder: (context, snapshot) {
-          if (snapshot.hasError) return const Center(child: Text("Error al cargar datos"));
+          if (snapshot.hasError) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(20.0),
+                child: Text(
+                  "Error: ${snapshot.error}",
+                  style: const TextStyle(color: Colors.red),
+                ),
+              ),
+            );
+          }
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -38,8 +48,10 @@ class PatientDashboard extends StatelessWidget {
 
           if (docs.isEmpty) {
             return const Center(
-              child: Text("Aún no tienes registros.\n¡Presiona el botón + para empezar!",
-                  textAlign: TextAlign.center),
+              child: Text(
+                "Aún no tienes registros.\n¡Presiona el botón + para empezar!",
+                textAlign: TextAlign.center,
+              ),
             );
           }
 
@@ -51,18 +63,22 @@ class PatientDashboard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text("¡Hola de nuevo!",
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                const Text(
+                  "¡Hola de nuevo!",
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                ),
                 const SizedBox(height: 20),
-                
+
                 // TARJETA DINÁMICA DE ÚLTIMO REGISTRO
                 _buildLatestSummary(lastEntry),
-                
+
                 const SizedBox(height: 30),
-                const Text("Historial de registros", 
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const Text(
+                  "Historial de registros",
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
                 const SizedBox(height: 10),
-                
+
                 // LISTA DINÁMICA
                 ListView.builder(
                   shrinkWrap: true,
@@ -97,24 +113,33 @@ class PatientDashboard extends StatelessWidget {
       decoration: BoxDecoration(
         color: isHigh ? Colors.red.shade50 : Colors.blue.shade50,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: isHigh ? Colors.red.shade200 : Colors.blue.shade200),
+        border: Border.all(
+          color: isHigh ? Colors.red.shade200 : Colors.blue.shade200,
+        ),
       ),
       child: Column(
         children: [
-          Text("Última medición", 
-              style: TextStyle(color: isHigh ? Colors.red.shade900 : Colors.blueGrey)),
+          Text(
+            "Última medición",
+            style: TextStyle(
+              color: isHigh ? Colors.red.shade900 : Colors.blueGrey,
+            ),
+          ),
           const SizedBox(height: 10),
           Text(
             "$value mg/dL",
             style: TextStyle(
-              fontSize: 40, 
-              fontWeight: FontWeight.bold, 
-              color: isHigh ? Colors.red.shade900 : Colors.blue.shade900
+              fontSize: 40,
+              fontWeight: FontWeight.bold,
+              color: isHigh ? Colors.red.shade900 : Colors.blue.shade900,
             ),
           ),
           Text(
             isHigh ? "Nivel Elevado" : "Nivel Normal",
-            style: TextStyle(color: isHigh ? Colors.red : Colors.green, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              color: isHigh ? Colors.red : Colors.green,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ],
       ),
@@ -122,18 +147,27 @@ class PatientDashboard extends StatelessWidget {
   }
 
   Widget _buildLogTile(Map<String, dynamic> data) {
-    final DateTime date = (data['created_at'] as Timestamp?)?.toDate() ?? DateTime.now();
+    final DateTime date =
+        (data['created_at'] as Timestamp?)?.toDate() ?? DateTime.now();
     final String timeFormatted = DateFormat('hh:mm a').format(date);
     final bool isHigh = data['is_high_risk'] ?? false;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       child: ListTile(
-        leading: Icon(Icons.bloodtype, color: isHigh ? Colors.red : Colors.green),
-        title: Text("${data['value']} mg/dL", 
-            style: const TextStyle(fontWeight: FontWeight.bold)),
+        leading: Icon(
+          Icons.bloodtype,
+          color: isHigh ? Colors.red : Colors.green,
+        ),
+        title: Text(
+          "${data['value']} mg/dL",
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
         subtitle: Text(data['timing'] ?? ""),
-        trailing: Text(timeFormatted, style: const TextStyle(color: Colors.grey)),
+        trailing: Text(
+          timeFormatted,
+          style: const TextStyle(color: Colors.grey),
+        ),
       ),
     );
   }
