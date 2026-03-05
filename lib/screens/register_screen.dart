@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:gluco_care_app/screens/patient_dashboard.dart';
 import '../services/auth_service.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -20,7 +21,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   void _handleRegister() async {
     if (_formKey.currentState!.validate()) {
       setState(() => _isLoading = true);
-      
+
       final user = await AuthService().registerWithEmail(
         _emailController.text.trim(),
         _passwordController.text.trim(),
@@ -35,9 +36,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
   // Maneja el inicio de sesión con Google
   void _handleGoogleSignIn() async {
     setState(() => _isLoading = true);
-    
+
     final user = await AuthService().signInWithGoogle(widget.role);
-    
+
     _finishAuth(user);
   }
 
@@ -47,13 +48,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
     setState(() => _isLoading = false);
 
     if (user != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("¡Bienvenido a GlucoCare!")),
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const PatientDashboard()),
       );
-      // Próximo paso: Redirigir según el rol
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Ocurrió un error. Por favor, intenta de nuevo.")),
+        const SnackBar(
+          content: Text("Ocurrió un error. Por favor, intenta de nuevo."),
+        ),
       );
     }
   }
@@ -62,7 +65,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text("Registro: ${widget.role == 'patient' ? 'Paciente' : 'Cuidador'}"),
+        title: Text(
+          "Registro: ${widget.role == 'patient' ? 'Paciente' : 'Cuidador'}",
+        ),
       ),
       body: Padding(
         padding: const EdgeInsets.all(24.0),
@@ -74,7 +79,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 TextFormField(
                   controller: _nameController,
                   decoration: const InputDecoration(
-                    labelText: "Nombre Completo", 
+                    labelText: "Nombre Completo",
                     border: OutlineInputBorder(),
                     prefixIcon: Icon(Icons.person_outline),
                   ),
@@ -85,7 +90,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
                   decoration: const InputDecoration(
-                    labelText: "Email", 
+                    labelText: "Email",
                     border: OutlineInputBorder(),
                     prefixIcon: Icon(Icons.email_outlined),
                   ),
@@ -95,15 +100,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 TextFormField(
                   controller: _passwordController,
                   decoration: const InputDecoration(
-                    labelText: "Contraseña", 
+                    labelText: "Contraseña",
                     border: OutlineInputBorder(),
                     prefixIcon: Icon(Icons.lock_outline),
                   ),
                   obscureText: true,
-                  validator: (val) => val!.length < 6 ? "Mínimo 6 caracteres" : null,
+                  validator: (val) =>
+                      val!.length < 6 ? "Mínimo 6 caracteres" : null,
                 ),
                 const SizedBox(height: 30),
-                
+
                 if (_isLoading)
                   const CircularProgressIndicator()
                 else ...[
@@ -115,11 +121,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       backgroundColor: Colors.blueAccent,
                       foregroundColor: Colors.white,
                     ),
-                    child: const Text("Crear Cuenta", style: TextStyle(fontSize: 16)),
+                    child: const Text(
+                      "Crear Cuenta",
+                      style: TextStyle(fontSize: 16),
+                    ),
                   ),
-                  
+
                   const SizedBox(height: 20),
-                  
+
                   // Divisor visual
                   const Row(
                     children: [
@@ -131,9 +140,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       Expanded(child: Divider()),
                     ],
                   ),
-                  
+
                   const SizedBox(height: 20),
-                  
+
                   // BOTÓN DE GOOGLE
                   OutlinedButton.icon(
                     onPressed: _handleGoogleSignIn,
