@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'patient_dashboard.dart';
+import 'caregiver_dashboard.dart';
 
 class InitialDashboard extends StatefulWidget {
   const InitialDashboard({super.key});
@@ -26,11 +28,23 @@ class _InitialDashboardState extends State<InitialDashboard> {
           'subscription_status': 'free', // Iniciamos con el plan gratis
           'created_at': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
+
+        if (!mounted) return;
+
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(
+            builder: (context) => role == 'patient'
+                ? const PatientDashboard()
+                : const CaregiverDashboard(),
+          ),
+          (route) => false,
+        );
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error al guardar: $e")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Error al guardar: $e")));
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -48,7 +62,11 @@ class _InitialDashboardState extends State<InitialDashboard> {
             children: [
               const Text(
                 "¡Casi listo!",
-                style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.blue),
+                style: TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blue,
+                ),
               ),
               const SizedBox(height: 10),
               const Text(
@@ -57,25 +75,27 @@ class _InitialDashboardState extends State<InitialDashboard> {
                 style: TextStyle(fontSize: 18, color: Colors.grey),
               ),
               const SizedBox(height: 40),
-              
+
               if (_isSaving)
                 const CircularProgressIndicator()
               else ...[
                 // Opción: PACIENTE
                 _buildRoleCard(
                   title: "Soy Paciente",
-                  description: "Quiero registrar mi glucosa y ver mis tendencias.",
+                  description:
+                      "Quiero registrar mi glucosa y ver mis tendencias.",
                   icon: Icons.person_search_outlined,
                   color: Colors.blue.shade700,
                   onTap: () => _selectRole('patient'),
                 ),
-                
+
                 const SizedBox(height: 20),
-                
+
                 // Opción: CUIDADOR
                 _buildRoleCard(
                   title: "Soy Cuidador",
-                  description: "Quiero supervisar las mediciones de mis seres queridos.",
+                  description:
+                      "Quiero supervisar las mediciones de mis seres queridos.",
                   icon: Icons.family_restroom_outlined,
                   color: Colors.teal.shade600,
                   onTap: () => _selectRole('caregiver'),
@@ -125,7 +145,11 @@ class _InitialDashboardState extends State<InitialDashboard> {
                 children: [
                   Text(
                     title,
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: color),
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: color,
+                    ),
                   ),
                   const SizedBox(height: 5),
                   Text(
