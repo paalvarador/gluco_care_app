@@ -38,14 +38,14 @@ class _LoginScreenState extends State<LoginScreen> {
 
         if (userDoc.exists && userDoc.data()!.containsKey('role')) {
           String role = userDoc.get('role');
-          
+
           // Si ya tiene rol, lo enviamos al Dashboard que le corresponde
           Navigator.pushAndRemoveUntil(
             context,
             MaterialPageRoute(
-              builder: (context) => role == 'patient' 
-                  ? const PatientDashboard() 
-                  : const CaregiverDashboard()
+              builder: (context) => role == 'patient'
+                  ? const PatientDashboard()
+                  : const CaregiverDashboard(),
             ),
             (route) => false,
           );
@@ -59,9 +59,9 @@ class _LoginScreenState extends State<LoginScreen> {
         }
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error al iniciar sesión: $e")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Error al iniciar sesión: $e")));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -88,7 +88,11 @@ class _LoginScreenState extends State<LoginScreen> {
               children: [
                 const Text(
                   "Hola de nuevo 👋",
-                  style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.blue),
+                  style: TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blue,
+                  ),
                 ),
                 const SizedBox(height: 10),
                 const Text(
@@ -96,7 +100,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   style: TextStyle(fontSize: 16, color: Colors.grey),
                 ),
                 const SizedBox(height: 40),
-                
+
                 // Campo de Email
                 TextField(
                   controller: _emailController,
@@ -104,13 +108,15 @@ class _LoginScreenState extends State<LoginScreen> {
                   decoration: InputDecoration(
                     labelText: "Email",
                     prefixIcon: const Icon(Icons.email_outlined),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(15),
+                    ),
                     filled: true,
                     fillColor: Colors.white,
                   ),
                 ),
                 const SizedBox(height: 20),
-                
+
                 // Campo de Password
                 TextField(
                   controller: _passwordController,
@@ -119,57 +125,77 @@ class _LoginScreenState extends State<LoginScreen> {
                     labelText: "Contraseña",
                     prefixIcon: const Icon(Icons.lock_outline),
                     suffixIcon: IconButton(
-                      icon: Icon(_isPasswordVisible ? Icons.visibility : Icons.visibility_off),
-                      onPressed: () => setState(() => _isPasswordVisible = !_isPasswordVisible),
+                      icon: Icon(
+                        _isPasswordVisible
+                            ? Icons.visibility
+                            : Icons.visibility_off,
+                      ),
+                      onPressed: () => setState(
+                        () => _isPasswordVisible = !_isPasswordVisible,
+                      ),
                     ),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(15),
+                    ),
                     filled: true,
                     fillColor: Colors.white,
                   ),
                 ),
                 const SizedBox(height: 30),
-                
+
                 // Botón Ingresar Manual (Email/Password)
                 ElevatedButton(
-                  onPressed: _isLoading ? null : () {
-                    // Aquí puedes añadir luego la lógica de AuthService().loginWithEmail
-                  },
+                  onPressed: _isLoading ? null : _handleLogin,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blue.shade800,
                     foregroundColor: Colors.white,
                     minimumSize: const Size(double.infinity, 55),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(15),
+                    ),
                   ),
-                  child: const Text("INGRESAR", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  child: const Text(
+                    "INGRESAR",
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
                 ),
                 const SizedBox(height: 25),
-                
-                const Center(child: Text("O continúa con", style: TextStyle(color: Colors.grey))),
+
+                const Center(
+                  child: Text(
+                    "O continúa con",
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                ),
                 const SizedBox(height: 25),
-                
+
                 // Botón Google (Llamando a la nueva función de redirección)
                 OutlinedButton.icon(
                   onPressed: _isLoading ? null : _handleGoogleSignIn,
                   icon: Image.network(
-                    'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/1200px-Google_%22G%22_logo.svg.png', 
-                    height: 24
+                    'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/1200px-Google_%22G%22_logo.svg.png',
+                    height: 24,
                   ),
                   label: const Text("Google"),
                   style: OutlinedButton.styleFrom(
                     backgroundColor: Colors.white,
                     minimumSize: const Size(double.infinity, 55),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(15),
+                    ),
                     side: BorderSide(color: Colors.grey.shade300),
                   ),
                 ),
                 const SizedBox(height: 30),
-                
+
                 // Link a Registro
                 Center(
                   child: TextButton(
                     onPressed: () => Navigator.push(
-                      context, 
-                      MaterialPageRoute(builder: (context) => const RegisterScreen())
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const RegisterScreen(),
+                      ),
                     ),
                     child: RichText(
                       text: const TextSpan(
@@ -178,7 +204,10 @@ class _LoginScreenState extends State<LoginScreen> {
                         children: [
                           TextSpan(
                             text: "Crea una aquí",
-                            style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold),
+                            style: TextStyle(
+                              color: Colors.blue,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ],
                       ),
@@ -189,7 +218,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ],
             ),
           ),
-          
+
           // Pantalla de carga (Overlay)
           if (_isLoading)
             Container(
@@ -199,5 +228,80 @@ class _LoginScreenState extends State<LoginScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _handleLogin() async {
+    // Validamos que los campos no estén vacíos
+    if (_emailController.text.trim().isEmpty ||
+        _passwordController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Por favor, llena todos los campos")),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      // 1. Iniciar sesión en Firebase Auth
+      UserCredential userCredential = await FirebaseAuth.instance
+          .signInWithEmailAndPassword(
+            email: _emailController.text.trim(),
+            password: _passwordController.text.trim(),
+          );
+
+      // 2. Consultar el rol en Firestore (igual que con Google)
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userCredential.user!.uid)
+          .get();
+
+      if (!mounted) return;
+
+      // Mensaje de éxito
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("¡Inicio de sesión exitoso! 👋"),
+          backgroundColor: Colors.green,
+        ),
+      );
+
+      // 3. Redirección lógica
+      if (userDoc.exists && userDoc.data()!.containsKey('role')) {
+        String role = userDoc.get('role');
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(
+            builder: (context) => role == 'patient'
+                ? const PatientDashboard()
+                : const CaregiverDashboard(),
+          ),
+          (route) => false,
+        );
+      } else {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => const InitialDashboard()),
+          (route) => false,
+        );
+      }
+    } on FirebaseAuthException catch (e) {
+      String message = "Error al ingresar";
+      if (e.code == 'user-not-found')
+        message = "No existe una cuenta con este email";
+      if (e.code == 'wrong-password') message = "Contraseña incorrecta";
+      if (e.code == 'invalid-email')
+        message = "El formato del email es inválido";
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message), backgroundColor: Colors.red),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 }

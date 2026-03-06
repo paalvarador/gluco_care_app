@@ -19,6 +19,7 @@ class PatientDashboard extends StatefulWidget {
 class _PatientDashboardState extends State<PatientDashboard> {
   final InAppPurchase _inAppPurchase = InAppPurchase.instance;
   late StreamSubscription<List<PurchaseDetails>> _subscription;
+  bool _isLoading = false;
 
   // Escuchador de cambios de autenticación
   @override
@@ -161,15 +162,15 @@ class _PatientDashboardState extends State<PatientDashboard> {
   }
 
   Future<void> _startPurchaseFlow() async {
-    debugPrint("Entro en la funcion Start Purchase Flow");
+    setState(() {
+      _isLoading = true;
+    });
 
     // 1. Verificar si la tienda está disponible
     final bool available = await _inAppPurchase.isAvailable();
 
-    debugPrint("valor de available: ${available}");
-
     if (!available) {
-      _showSnackBar("La tienda no está disponible en este momento.");
+      _showSnackBar("La tienda de Google Play no está disponible.");
       return;
     }
 
@@ -181,7 +182,7 @@ class _PatientDashboardState extends State<PatientDashboard> {
         .queryProductDetails(_kIds);
 
     if (response.notFoundIDs.isNotEmpty) {
-      _showSnackBar("Producto no encontrado en la tienda.");
+      _showSnackBar("No se encontró el producto premium.");
       return;
     }
 
@@ -193,6 +194,10 @@ class _PatientDashboardState extends State<PatientDashboard> {
 
     // Esto abre la ventanita nativa de Google Pay
     _inAppPurchase.buyNonConsumable(purchaseParam: purchaseParam);
+
+    setState(() {
+      _isLoading = false;
+    });
   }
 
   // --- WIDGETS AUXILIARES MEJORADOS ---
@@ -214,7 +219,7 @@ class _PatientDashboardState extends State<PatientDashboard> {
           TextButton.icon(
             onPressed: () => _showPremiumModal(context),
             icon: const Icon(Icons.star, color: Colors.amber, size: 20),
-            label: const Text("Pásate a Premium \$4.99"),
+            label: const Text("Pásate a Premium"),
           ),
         ],
       ),
