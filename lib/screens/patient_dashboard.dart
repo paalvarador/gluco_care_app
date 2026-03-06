@@ -1,144 +1,248 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:intl/intl.dart'; // Asegúrate de agregar intl en tu pubspec.yaml
+import 'package:fl_chart/fl_chart.dart';
+import 'package:intl/intl.dart';
 import 'add_entry_modal.dart';
+import 'welcome_screen.dart';
+import 'package:in_app_purchase/in_app_purchase.dart';
 
-class PatientDashboard extends StatelessWidget {
+class PatientDashboard extends StatefulWidget {
   const PatientDashboard({super.key});
+
+  @override
+  State<PatientDashboard> createState() => _PatientDashboardState();
+}
+
+class _PatientDashboardState extends State<PatientDashboard> {
+  final InAppPurchase _inAppPurchase = InAppPurchase.instance;
+  late StreamSubscription<List<PurchaseDetails>> _subscription;
+
+  // Escuchador de cambios de autenticación
+  @override
+  void initState() {
+    super.initState();
+    _checkAuthStatus();
+
+    // Escuchamos los cambios en las compras
+    final Stream<List<PurchaseDetails>> purchaseUpdated =
+        _inAppPurchase.purchaseStream;
+    _subscription = purchaseUpdated.listen(
+      (purchaseDetailsList) {
+        _listenToPurchaseUpdated(purchaseDetailsList);
+      },
+      onDone: () {
+        _subscription.cancel();
+      },
+      onError: (error) {
+        _showSnackBar("Error de conexión con la tienda");
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _subscription.cancel();
+    super.dispose();
+  }
+
+  void _checkAuthStatus() {
+    FirebaseAuth.instance.authStateChanges().listen((User? user) {
+      if (user == null && mounted) {
+        // Si la sesión expira (como te pasó tras 4h), volvemos al inicio
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => const WelcomeScreen()),
+          (route) => false,
+        );
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
+    // Si por alguna razón el widget se construye y no hay user, evitamos el crash
+    if (user == null)
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text("Mi Control de Glucosa"),
+        elevation: 0,
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black,
+        title: const Text(
+          "Mi Glucosa (24h)",
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.logout),
+            icon: const Icon(Icons.logout_rounded),
             onPressed: () => FirebaseAuth.instance.signOut(),
           ),
         ],
       ),
       body: StreamBuilder<QuerySnapshot>(
-        // Escuchamos los cambios en la colección glucose_logs para este usuario
         stream: FirebaseFirestore.instance
             .collection('glucose_logs')
-            .where('user_id', isEqualTo: user?.uid)
-            .orderBy('created_at', descending: true)
+            .where('user_id', isEqualTo: user.uid)
             .snapshots(),
         builder: (context, snapshot) {
           if (snapshot.hasError) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(20.0),
-                child: Text(
-                  "Error: ${snapshot.error}",
-                  style: const TextStyle(color: Colors.red),
-                ),
-              ),
-            );
+            return const Center(child: Text("Error de conexión. Reintenta."));
           }
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
 
-          final docs = snapshot.data!.docs;
+          List<QueryDocumentSnapshot> logs = snapshot.data?.docs ?? [];
 
-          if (docs.isEmpty) {
-            return const Center(
-              child: Text(
-                "Aún no tienes registros.\n¡Presiona el botón + para empezar!",
-                textAlign: TextAlign.center,
+          // Ordenar: Más reciente primero
+          logs.sort((a, b) {
+            Timestamp t1 = a['created_at'] ?? Timestamp.now();
+            Timestamp t2 = b['created_at'] ?? Timestamp.now();
+            return t2.compareTo(t1);
+          });
+
+          return RefreshIndicator(
+            onRefresh: () async => setState(() {}),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    "Tendencia del día",
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    height: 200,
+                    child: logs.isEmpty
+                        ? const Center(child: Text("No hay datos registrados"))
+                        : _buildChart(logs.reversed.toList()),
+                  ),
+                  const SizedBox(height: 30),
+
+                  // Botón Premium
+                  _buildPremiumBanner(context),
+
+                  const SizedBox(height: 30),
+                  const Text(
+                    "Registros Recientes",
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 10),
+
+                  ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: logs.length,
+                    itemBuilder: (context, index) {
+                      final data = logs[index].data() as Map<String, dynamic>;
+                      return _buildLogTile(data);
+                    },
+                  ),
+                ],
               ),
-            );
-          }
-
-          // Tomamos la última medida para la tarjeta superior
-          final lastEntry = docs.first.data() as Map<String, dynamic>;
-
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  "¡Hola de nuevo!",
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 20),
-
-                // TARJETA DINÁMICA DE ÚLTIMO REGISTRO
-                _buildLatestSummary(lastEntry),
-
-                const SizedBox(height: 30),
-                const Text(
-                  "Historial de registros",
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 10),
-
-                // LISTA DINÁMICA
-                ListView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: docs.length,
-                  itemBuilder: (context, index) {
-                    final data = docs[index].data() as Map<String, dynamic>;
-                    return _buildLogTile(data);
-                  },
-                ),
-              ],
             ),
           );
         },
       ),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: FloatingActionButton(
         onPressed: () => _showAddEntry(context),
-        label: const Text("Nuevo Registro"),
-        icon: const Icon(Icons.add),
-        backgroundColor: Colors.blueAccent,
+        backgroundColor: Colors.blue.shade800,
+        child: const Icon(Icons.add, color: Colors.white),
       ),
     );
   }
 
-  Widget _buildLatestSummary(Map<String, dynamic> data) {
-    final int value = data['value'] ?? 0;
-    final bool isHigh = data['is_high_risk'] ?? false;
+  Future<void> _startPurchaseFlow() async {
+    debugPrint("Entro en la funcion Start Purchase Flow");
 
+    // 1. Verificar si la tienda está disponible
+    final bool available = await _inAppPurchase.isAvailable();
+
+    debugPrint("valor de available: ${available}");
+
+    if (!available) {
+      _showSnackBar("La tienda no está disponible en este momento.");
+      return;
+    }
+
+    // 2. Definir el ID del producto que creaste en Google Play Console
+    const Set<String> _kIds = {'glucocare_premium_monthly'};
+
+    // 3. Cargar los detalles del producto desde los servidores de Google
+    final ProductDetailsResponse response = await _inAppPurchase
+        .queryProductDetails(_kIds);
+
+    if (response.notFoundIDs.isNotEmpty) {
+      _showSnackBar("Producto no encontrado en la tienda.");
+      return;
+    }
+
+    // 4. Lanzar la compra
+    final ProductDetails productDetails = response.productDetails.first;
+    final PurchaseParam purchaseParam = PurchaseParam(
+      productDetails: productDetails,
+    );
+
+    // Esto abre la ventanita nativa de Google Pay
+    _inAppPurchase.buyNonConsumable(purchaseParam: purchaseParam);
+  }
+
+  // --- WIDGETS AUXILIARES MEJORADOS ---
+
+  Widget _buildPremiumBanner(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
-        color: isHigh ? Colors.red.shade50 : Colors.blue.shade50,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isHigh ? Colors.red.shade200 : Colors.blue.shade200,
-        ),
+        color: Colors.blue.shade50,
+        borderRadius: BorderRadius.circular(15),
       ),
       child: Column(
         children: [
-          Text(
-            "Última medición",
-            style: TextStyle(
-              color: isHigh ? Colors.red.shade900 : Colors.blueGrey,
-            ),
+          const Text(
+            "¿Quieres ver más de 24 horas?",
+            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue),
           ),
-          const SizedBox(height: 10),
-          Text(
-            "$value mg/dL",
-            style: TextStyle(
-              fontSize: 40,
-              fontWeight: FontWeight.bold,
-              color: isHigh ? Colors.red.shade900 : Colors.blue.shade900,
-            ),
+          TextButton.icon(
+            onPressed: () => _showPremiumModal(context),
+            icon: const Icon(Icons.star, color: Colors.amber, size: 20),
+            label: const Text("Pásate a Premium \$4.99"),
           ),
-          Text(
-            isHigh ? "Nivel Elevado" : "Nivel Normal",
-            style: TextStyle(
-              color: isHigh ? Colors.red : Colors.green,
-              fontWeight: FontWeight.bold,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChart(List<QueryDocumentSnapshot> logs) {
+    List<FlSpot> spots = [];
+    for (int i = 0; i < logs.length; i++) {
+      double val = (logs[i]['value'] as num).toDouble();
+      spots.add(FlSpot(i.toDouble(), val));
+    }
+
+    return LineChart(
+      LineChartData(
+        gridData: const FlGridData(show: false),
+        titlesData: const FlTitlesData(show: false),
+        borderData: FlBorderData(show: false),
+        lineBarsData: [
+          LineChartBarData(
+            spots: spots,
+            isCurved: true,
+            color: Colors.blue.shade700,
+            barWidth: 4,
+            dotData: const FlDotData(show: true),
+            belowBarData: BarAreaData(
+              show: true,
+              color: Colors.blue.shade700.withOpacity(0.1),
             ),
           ),
         ],
@@ -147,26 +251,111 @@ class PatientDashboard extends StatelessWidget {
   }
 
   Widget _buildLogTile(Map<String, dynamic> data) {
-    final DateTime date =
-        (data['created_at'] as Timestamp?)?.toDate() ?? DateTime.now();
-    final String timeFormatted = DateFormat('hh:mm a').format(date);
-    final bool isHigh = data['is_high_risk'] ?? false;
+    String formattedTime = "---";
+    if (data['created_at'] != null) {
+      DateTime date = (data['created_at'] as Timestamp).toDate();
+      formattedTime = DateFormat('hh:mm a').format(date);
+    }
+
+    final int value = data['value'] ?? 0;
+    final bool isCritical = value > 180 || value < 70;
 
     return Card(
+      elevation: 0,
+      color: Colors.grey.shade50,
       margin: const EdgeInsets.only(bottom: 10),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       child: ListTile(
-        leading: Icon(
-          Icons.bloodtype,
-          color: isHigh ? Colors.red : Colors.green,
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: isCritical ? Colors.red.shade50 : Colors.green.shade50,
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            Icons.bloodtype,
+            color: isCritical ? Colors.red : Colors.green,
+          ),
         ),
         title: Text(
-          "${data['value']} mg/dL",
+          "$value mg/dL",
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
-        subtitle: Text(data['timing'] ?? ""),
-        trailing: Text(
-          timeFormatted,
-          style: const TextStyle(color: Colors.grey),
+        subtitle: Text("$formattedTime - ${data['timing']}"),
+        trailing: const Icon(Icons.chevron_right, size: 16),
+      ),
+    );
+  }
+
+  Widget _buildFeatureRow(IconData icon, String text) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: Colors.green),
+          const SizedBox(width: 10),
+          Text(text, style: const TextStyle(fontSize: 14)),
+        ],
+      ),
+    );
+  }
+
+  // Modales se mantienen igual pero asegúrate de que el context sea válido
+  void _showPremiumModal(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
+      ),
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(30),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.stars, size: 60, color: Colors.amber),
+            const SizedBox(height: 20),
+            const Text(
+              "Plan Premium Gluco Care",
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 15),
+            _buildFeatureRow(Icons.history, "Historial ilimitado (más de 24h)"),
+            _buildFeatureRow(
+              Icons.picture_as_pdf,
+              "Reportes PDF para tu doctor",
+            ),
+            _buildFeatureRow(Icons.share, "Envío completo por WhatsApp"),
+            const SizedBox(height: 30),
+
+            ElevatedButton(
+              onPressed: () {
+                _startPurchaseFlow();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue.shade800,
+                minimumSize: const Size(double.infinity, 55),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(15),
+                ),
+              ),
+              child: const Text(
+                "SUSCRIBIRME POR \$4.99 / MES",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              "Pago procesado de forma segura por Google Play",
+              style: TextStyle(fontSize: 11, color: Colors.grey),
+            ),
+          ],
         ),
       ),
     );
@@ -176,10 +365,55 @@ class PatientDashboard extends StatelessWidget {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      // Quitamos el transparent de aquí para que el fondo sea el por defecto (blanco/gris)
+      // O lo mantenemos pero aseguramos que el modal tenga estilo:
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
       ),
+      backgroundColor: Colors.white, // <--- Forzamos el color blanco aquí
       builder: (context) => const AddEntryModal(),
     );
+  }
+
+  void _listenToPurchaseUpdated(List<PurchaseDetails> purchaseDetailsList) {
+    purchaseDetailsList.forEach((PurchaseDetails purchaseDetails) async {
+      if (purchaseDetails.status == PurchaseStatus.pending) {
+        // Mostrar un indicador de carga si quieres
+      } else {
+        if (purchaseDetails.status == PurchaseStatus.error) {
+          _showSnackBar("Error en el pago: ${purchaseDetails.error}");
+        } else if (purchaseDetails.status == PurchaseStatus.purchased ||
+            purchaseDetails.status == PurchaseStatus.restored) {
+          // ¡ÉXITO! Actualizamos Firestore
+          await _updateUserToPremium();
+          _showSnackBar("¡Felicidades! Ya eres Premium.");
+        }
+
+        // Siempre hay que finalizar la compra para que Google no devuelva el dinero
+        if (purchaseDetails.pendingCompletePurchase) {
+          await _inAppPurchase.completePurchase(purchaseDetails);
+        }
+      }
+    });
+  }
+
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating, // Para que se vea más moderno
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  Future<void> _updateUserToPremium() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).update(
+        {'subscription_status': 'premium'},
+      );
+    }
   }
 }
