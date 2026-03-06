@@ -5,6 +5,8 @@ import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'dart:async';
+import 'package:in_app_purchase/in_app_purchase.dart';
 
 class CaregiverDashboard extends StatefulWidget {
   const CaregiverDashboard({super.key});
@@ -15,6 +17,31 @@ class CaregiverDashboard extends StatefulWidget {
 
 class _CaregiverDashboardState extends State<CaregiverDashboard> {
   bool _isSaving = false;
+  StreamSubscription<List<PurchaseDetails>>? _subscription;
+
+  @override
+  void initState() {
+    super.initState();
+    final Stream<List<PurchaseDetails>> purchaseUpdated =
+        InAppPurchase.instance.purchaseStream;
+    _subscription = purchaseUpdated.listen(
+      (purchaseDetailsList) {
+        _listenToPurchaseUpdated(purchaseDetailsList);
+      },
+      onDone: () {
+        _subscription?.cancel();
+      },
+      onError: (error) {
+        _showSnackBar("Error en la tienda: $error", Colors.red);
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -572,7 +599,7 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
           ),
           ElevatedButton(
             onPressed:
-                () {}, // Aquí conectas tu flujo de In-App Purchase de $4.99
+                () => _buyPremium(),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.white,
               foregroundColor: Colors.blue[900],
@@ -899,5 +926,67 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
         if (mounted) setState(() => _isSaving = false);
       }
     }
+  }
+
+  void _listenToPurchaseUpdated(List<PurchaseDetails> purchaseDetailsList) {
+    purchaseDetailsList.forEach((PurchaseDetails purchaseDetails) async {
+      if (purchaseDetails.status == PurchaseStatus.pending) {
+        _showSnackBar("Procesando pago...", Colors.blue);
+      } else {
+        if (purchaseDetails.status == PurchaseStatus.error) {
+          _showSnackBar(
+            "Error al procesar: ${purchaseDetails.error}",
+            Colors.red,
+          );
+        } else if (purchaseDetails.status == PurchaseStatus.purchased ||
+            purchaseDetails.status == PurchaseStatus.restored) {
+          // ¡PAGO EXITOSO! Actualizamos Firestore
+          await _setPremiumStatus();
+
+          _showSnackBar(
+            "¡Bienvenido a Premium! Historial desbloqueado.",
+            Colors.green,
+          );
+        }
+
+        if (purchaseDetails.pendingCompletePurchase) {
+          await InAppPurchase.instance.completePurchase(purchaseDetails);
+        }
+      }
+    });
+  }
+
+  Future<void> _setPremiumStatus() async {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser != null) {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(currentUser.uid)
+          .update({'subscription_status': 'premium'});
+    }
+  }
+
+  Future<void> _buyPremium() async {
+    const String premiumId =
+        'gluco_care_premium_499'; // El ID que crees en Play Store / App Store
+    final bool available = await InAppPurchase.instance.isAvailable();
+
+    if (!available) {
+      _showSnackBar("La tienda no está disponible", Colors.red);
+      return;
+    }
+
+    final ProductDetailsResponse response = await InAppPurchase.instance
+        .queryProductDetails({premiumId});
+
+    if (response.notFoundIDs.isNotEmpty) {
+      _showSnackBar("Producto no encontrado en la tienda", Colors.red);
+      return;
+    }
+
+    final PurchaseParam purchaseParam = PurchaseParam(
+      productDetails: response.productDetails.first,
+    );
+    InAppPurchase.instance.buyNonConsumable(purchaseParam: purchaseParam);
   }
 }
