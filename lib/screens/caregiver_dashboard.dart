@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 class CaregiverDashboard extends StatefulWidget {
   const CaregiverDashboard({super.key});
@@ -132,6 +135,28 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
                               ),
                           const SizedBox(height: 25),
                           _buildSectionHeader("Registros de Hoy", Icons.today),
+                          const SizedBox(height: 10),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton.icon(
+                              onPressed: () => _generatePdfReport(
+                                logs,
+                                linkedName ?? "Paciente",
+                                isPremiumUser,
+                              ),
+                              icon: const Icon(
+                                Icons.picture_as_pdf,
+                                size: 18,
+                                color: Colors.red,
+                              ),
+                              label: Text(
+                                isPremiumUser
+                                    ? "Exportar Reporte Completo"
+                                    : "Reporte de Hoy (PDF)",
+                                style: const TextStyle(color: Colors.red),
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -701,5 +726,125 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
     } else {
       return DateFormat('dd/MM/yyyy').format(date);
     }
+  }
+
+  Future<void> _generatePdfReport(
+    List<QueryDocumentSnapshot> logs,
+    String patientName,
+    bool isPremium,
+  ) async {
+    final pdf = pw.Document();
+    final DateTime now = DateTime.now();
+
+    // Título dinámico según el plan
+    final String reportTitle = isPremium
+        ? "Reporte Histórico de Glucosa"
+        : "Reporte de Glucosa (Hoy)";
+
+    pdf.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        build: (pw.Context context) {
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              // Encabezado Profesional
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text(
+                    "Gluco Care App",
+                    style: pw.TextStyle(
+                      fontSize: 24,
+                      fontWeight: pw.FontWeight.bold,
+                      color: PdfColors.blue900,
+                    ),
+                  ),
+                  pw.Text(
+                    DateFormat('dd/MM/yyyy HH:mm').format(now),
+                    style: const pw.TextStyle(color: PdfColors.grey),
+                  ),
+                ],
+              ),
+              pw.SizedBox(height: 20),
+              pw.Text(
+                reportTitle,
+                style: pw.TextStyle(
+                  fontSize: 18,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+              pw.Text("Paciente: $patientName"),
+              pw.Divider(thickness: 2, color: PdfColors.blue900),
+              pw.SizedBox(height: 20),
+
+              // Tabla de Registros
+              pw.TableHelper.fromTextArray(
+                headers: ['Fecha', 'Momento', 'Valor (mg/dL)', 'Estado'],
+                data: logs.map((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  final int val = data['value'] ?? 0;
+                  final DateTime date = (data['created_at'] as Timestamp)
+                      .toDate();
+
+                  String status = "Normal";
+                  if (val < 54) status = "Crítico";
+                  if (val > 54 && val < 70) status = "Bajo";
+                  if (val > 600)
+                    status = "Crítico";
+                  else if (val > 250)
+                    status = "Elevado";
+
+                  return [
+                    _getRelativeDate(
+                      date,
+                    ), // Usamos la misma lógica de "Hoy/Ayer"
+                    data['timing'] ?? 'N/A',
+                    "$val",
+                    status,
+                  ];
+                }).toList(),
+                headerStyle: pw.TextStyle(
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.white,
+                ),
+                headerDecoration: const pw.BoxDecoration(
+                  color: PdfColors.blue900,
+                ),
+                cellAlignment: pw.Alignment.center,
+                rowDecoration: const pw.BoxDecoration(
+                  border: pw.Border(
+                    bottom: pw.BorderSide(color: PdfColors.grey100, width: .5),
+                  ),
+                ),
+                cellDecoration: (index, data, rowNum) {
+                  if (rowNum % 2 == 0) {
+                    return const pw.BoxDecoration(color: PdfColors.grey100);
+                  }
+                  return const pw.BoxDecoration();
+                },
+              ),
+
+              pw.SizedBox(height: 40),
+              pw.Center(
+                child: pw.Text(
+                  "Este reporte es informativo. Consulte siempre a su médico especialista.",
+                  style: pw.TextStyle(
+                    fontSize: 10,
+                    fontStyle: pw.FontStyle.italic,
+                    color: PdfColors.grey700,
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    // Mostrar previsualización e imprimir/compartir
+    await Printing.layoutPdf(
+      onLayout: (PdfPageFormat format) async => pdf.save(),
+    );
   }
 }
