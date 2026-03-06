@@ -324,8 +324,8 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
               leading: const Icon(Icons.link_off, color: Colors.red),
               title: const Text("Desvincular Paciente"),
               onTap: () {
-                // Aquí podrías limpiar el linkedPatientId en Firestore
                 Navigator.pop(context);
+                _confirmUnlink();
               },
             ),
             ListTile(
@@ -846,5 +846,58 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
     await Printing.layoutPdf(
       onLayout: (PdfPageFormat format) async => pdf.save(),
     );
+  }
+
+  Future<void> _confirmUnlink() async {
+    // Mostramos la alerta de confirmación
+    bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text("¿Desvincular familiar?"),
+        content: const Text(
+          "Si desvinculas a tu familiar, dejarás de recibir sus actualizaciones de glucosa en tiempo real.",
+          style: TextStyle(color: Colors.grey),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("CANCELAR", style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text("SÍ, DESVINCULAR"),
+          ),
+        ],
+      ),
+    );
+
+    // Si el usuario confirmó, procedemos a borrar los datos en Firestore
+    if (confirm == true) {
+      setState(() => _isSaving = true);
+      try {
+        final currentUser = FirebaseAuth.instance.currentUser;
+        if (currentUser != null) {
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(currentUser.uid)
+              .update({
+                'linkedPatientId':
+                    FieldValue.delete(), // Borra el campo por completo
+                'linkedPatientName': FieldValue.delete(),
+              });
+
+          _showSnackBar("Familiar desvinculado correctamente", Colors.blueGrey);
+        }
+      } catch (e) {
+        _showSnackBar("Error al desvincular: $e", Colors.red);
+      } finally {
+        if (mounted) setState(() => _isSaving = false);
+      }
+    }
   }
 }
