@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -80,6 +81,14 @@ class _PatientDashboardState extends State<PatientDashboard> {
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         actions: [
+          IconButton(
+            onPressed: _generatedLinkingCode,
+            icon: const Icon(
+              Icons.person_add_alt_1_rounded,
+              color: Colors.blue,
+            ),
+            tooltip: "Vincular con familiar",
+          ),
           IconButton(
             icon: const Icon(Icons.logout_rounded),
             onPressed: () => FirebaseAuth.instance.signOut(),
@@ -420,5 +429,80 @@ class _PatientDashboardState extends State<PatientDashboard> {
         {'subscription_status': 'premium'},
       );
     }
+  }
+
+  Future<void> _generatedLinkingCode() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    // 1. Generar código de 6 caracteres
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    String code = String.fromCharCodes(
+      Iterable.generate(
+        6,
+        (_) => chars.codeUnitAt(Random().nextInt(chars.length)),
+      ),
+    );
+
+    try {
+      // 2. Guardar en la colección global de conexiones
+      await FirebaseFirestore.instance.collection('connections').doc(code).set({
+        'patientId': user.uid,
+        'patientName': user.displayName ?? 'Familiar',
+        'createdAt': FieldValue.serverTimestamp(),
+        'expiresAt': DateTime.now().add(
+          const Duration(hours: 1),
+        ), // El código expira en 1h
+      });
+
+      // 3. Mostrar el código en un Dialog
+      _showCodeDialog(code);
+    } catch (e) {
+      debugPrint("Error al generar codigo: $e");
+    }
+  }
+
+  void _showCodeDialog(String code) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text("Código de Vinculación", textAlign: TextAlign.center),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text("Dicta este código a tu familiar:"),
+            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                code,
+                style: const TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 5,
+                  color: Colors.blue,
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              "Este código expirará en 1 hora",
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cerrar"),
+          ),
+        ],
+      ),
+    );
   }
 }
