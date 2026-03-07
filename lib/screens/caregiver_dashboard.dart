@@ -598,8 +598,7 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
             ),
           ),
           ElevatedButton(
-            onPressed:
-                () => _buyPremium(),
+            onPressed: () => _buyPremium(),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.white,
               foregroundColor: Colors.blue[900],
@@ -763,113 +762,139 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
     final pdf = pw.Document();
     final DateTime now = DateTime.now();
 
-    // Título dinámico según el plan
-    final String reportTitle = isPremium
-        ? "Reporte Histórico de Glucosa"
-        : "Reporte de Glucosa (Hoy)";
+    // Invertimos para que el reporte sea cronológico (de más antiguo a más reciente)
+    final chartLogs = logs.reversed.toList();
 
     pdf.addPage(
-      pw.Page(
+      pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(32),
         build: (pw.Context context) {
-          return pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              // Encabezado Profesional
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Text(
-                    "Gluco Care App",
-                    style: pw.TextStyle(
-                      fontSize: 24,
-                      fontWeight: pw.FontWeight.bold,
-                      color: PdfColors.blue900,
+          return [
+            // Encabezado
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text(
+                  "Gluco Care ${isPremium ? 'Premium' : ''}",
+                  style: pw.TextStyle(
+                    fontSize: 22,
+                    fontWeight: pw.FontWeight.bold,
+                    color: PdfColors.blue900,
+                  ),
+                ),
+                pw.Text(
+                  DateFormat('dd/MM/yyyy HH:mm').format(now),
+                  style: const pw.TextStyle(color: PdfColors.grey),
+                ),
+              ],
+            ),
+            pw.SizedBox(height: 10),
+            pw.Text("Reporte de Monitoreo: $patientName"),
+            pw.Divider(color: PdfColors.blue900, thickness: 1.5),
+            pw.SizedBox(height: 20),
+
+            // --- SECCIÓN DE LA GRÁFICA ---
+            pw.Text(
+              "Gráfico de Tendencia (Glucosa)",
+              style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 10),
+            pw.Container(
+              height: 180,
+              child: pw.Chart(
+                grid: pw.CartesianGrid(
+                  xAxis: pw.FixedAxis(
+                    // Definimos las posiciones de los puntos en el eje X
+                    List.generate(chartLogs.length, (i) => i.toDouble()),
+                    buildLabel: (i) => pw.Text(
+                      _getRelativeDate(
+                        (chartLogs[i.toInt()]['created_at'] as Timestamp)
+                            .toDate(),
+                      ),
+                      style: const pw.TextStyle(fontSize: 6),
                     ),
                   ),
-                  pw.Text(
-                    DateFormat('dd/MM/yyyy HH:mm').format(now),
-                    style: const pw.TextStyle(color: PdfColors.grey),
+                  yAxis: pw.FixedAxis(
+                    [0, 50, 100, 150, 200, 250, 300], // Valores fijos del eje Y
+                    buildLabel: (v) =>
+                        pw.Text('$v', style: const pw.TextStyle(fontSize: 8)),
+                  ),
+                ),
+                datasets: [
+                  pw.LineDataSet(
+                    drawPoints: true,
+                    pointSize: 3,
+                    color: PdfColors.blue700,
+                    data: List.generate(chartLogs.length, (i) {
+                      final val = (chartLogs[i]['value'] as num).toDouble();
+                      return pw.PointChartValue(i.toDouble(), val);
+                    }),
                   ),
                 ],
               ),
-              pw.SizedBox(height: 20),
-              pw.Text(
-                reportTitle,
+            ),
+            pw.SizedBox(height: 30),
+
+            // --- TABLA DE REGISTROS ---
+            pw.TableHelper.fromTextArray(
+              headers: ['Fecha', 'Momento', 'Valor (mg/dL)', 'Estado'],
+              data: logs.map((doc) {
+                final data = doc.data() as Map<String, dynamic>;
+                final int val = data['value'] ?? 0;
+                final DateTime date = (data['created_at'] as Timestamp)
+                    .toDate();
+
+                String status = "Normal";
+                if (val < 70)
+                  status = "Bajo";
+                else if (val > 180)
+                  status = "Crítico";
+                else if (val > 140)
+                  status = "Elevado";
+
+                return [
+                  _getRelativeDate(date),
+                  data['timing'] ?? 'N/A',
+                  "$val",
+                  status,
+                ];
+              }).toList(),
+              headerStyle: pw.TextStyle(
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.white,
+              ),
+              headerDecoration: const pw.BoxDecoration(
+                color: PdfColors.blue900,
+              ),
+              cellAlignment: pw.Alignment.center,
+              rowDecoration: const pw.BoxDecoration(
+                border: pw.Border(
+                  bottom: pw.BorderSide(color: PdfColors.grey100, width: .5),
+                ),
+              ),
+              cellDecoration: (index, data, rowNum) => rowNum % 2 == 0
+                  ? const pw.BoxDecoration(color: PdfColors.grey100)
+                  : const pw.BoxDecoration(),
+            ),
+
+            pw.SizedBox(height: 30),
+            pw.Center(
+              child: pw.Text(
+                "Este reporte es generado automáticamente por Gluco Care y es estrictamente informativo.",
                 style: pw.TextStyle(
-                  fontSize: 18,
-                  fontWeight: pw.FontWeight.bold,
+                  fontSize: 9,
+                  fontStyle: pw.FontStyle.italic,
+                  color: PdfColors.grey,
                 ),
               ),
-              pw.Text("Paciente: $patientName"),
-              pw.Divider(thickness: 2, color: PdfColors.blue900),
-              pw.SizedBox(height: 20),
-
-              // Tabla de Registros
-              pw.TableHelper.fromTextArray(
-                headers: ['Fecha', 'Momento', 'Valor (mg/dL)', 'Estado'],
-                data: logs.map((doc) {
-                  final data = doc.data() as Map<String, dynamic>;
-                  final int val = data['value'] ?? 0;
-                  final DateTime date = (data['created_at'] as Timestamp)
-                      .toDate();
-
-                  String status = "Normal";
-                  if (val < 54) status = "Crítico";
-                  if (val > 54 && val < 70) status = "Bajo";
-                  if (val > 600)
-                    status = "Crítico";
-                  else if (val > 250)
-                    status = "Elevado";
-
-                  return [
-                    _getRelativeDate(
-                      date,
-                    ), // Usamos la misma lógica de "Hoy/Ayer"
-                    data['timing'] ?? 'N/A',
-                    "$val",
-                    status,
-                  ];
-                }).toList(),
-                headerStyle: pw.TextStyle(
-                  fontWeight: pw.FontWeight.bold,
-                  color: PdfColors.white,
-                ),
-                headerDecoration: const pw.BoxDecoration(
-                  color: PdfColors.blue900,
-                ),
-                cellAlignment: pw.Alignment.center,
-                rowDecoration: const pw.BoxDecoration(
-                  border: pw.Border(
-                    bottom: pw.BorderSide(color: PdfColors.grey100, width: .5),
-                  ),
-                ),
-                cellDecoration: (index, data, rowNum) {
-                  if (rowNum % 2 == 0) {
-                    return const pw.BoxDecoration(color: PdfColors.grey100);
-                  }
-                  return const pw.BoxDecoration();
-                },
-              ),
-
-              pw.SizedBox(height: 40),
-              pw.Center(
-                child: pw.Text(
-                  "Este reporte es informativo. Consulte siempre a su médico especialista.",
-                  style: pw.TextStyle(
-                    fontSize: 10,
-                    fontStyle: pw.FontStyle.italic,
-                    color: PdfColors.grey700,
-                  ),
-                ),
-              ),
-            ],
-          );
+            ),
+          ];
         },
       ),
     );
 
-    // Mostrar previsualización e imprimir/compartir
+    // Abrir la interfaz nativa para imprimir o compartir
     await Printing.layoutPdf(
       onLayout: (PdfPageFormat format) async => pdf.save(),
     );
