@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:gluco_care_app/screens/welcome_screen.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -141,8 +142,10 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
                       padding: const EdgeInsets.all(20),
                       child: Column(
                         children: [
-                          _buildPremiumBanner(isPremiumUser),
-                          const SizedBox(height: 20),
+                          if (!isPremiumUser) ...[
+                            _buildPremiumBanner(isPremiumUser),
+                            const SizedBox(height: 20),
+                          ],
                           _buildStatusHero(logs),
                           const SizedBox(height: 25),
                           _buildSectionHeader(
@@ -359,14 +362,32 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
               leading: const Icon(Icons.logout),
               title: const Text("Cerrar Sesión"),
               onTap: () {
-                FirebaseAuth.instance.signOut();
                 Navigator.pop(context);
+                _handleSignOut();
               },
             ),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _handleSignOut() async {
+    try {
+      await FirebaseAuth.instance.signOut();
+      // El StreamBuilder detectará que el usuario es nulo y podrías manejarlo ahí,
+      // pero forzamos la salida para mayor seguridad.
+      if (mounted) {
+        // Reemplaza 'WelcomeScreen' por el nombre exacto de tu clase de inicio
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => const WelcomeScreen()),
+          (route) => false,
+        );
+      }
+    } catch (e) {
+      _showSnackBar("Error al cerrar sesión: $e", Colors.red);
+    }
   }
 
   Widget _buildStatusHero(List<QueryDocumentSnapshot> logs) {
