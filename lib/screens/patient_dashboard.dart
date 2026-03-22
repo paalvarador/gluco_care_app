@@ -25,25 +25,18 @@ class _PatientDashboardState extends State<PatientDashboard> {
   late StreamSubscription<List<PurchaseDetails>> _subscription;
   bool _isLoading = false;
 
-  // Escuchador de cambios de autenticación
   @override
   void initState() {
     super.initState();
     _checkAuthStatus();
-
-    // Escuchamos los cambios en las compras
     final Stream<List<PurchaseDetails>> purchaseUpdated =
         _inAppPurchase.purchaseStream;
     _subscription = purchaseUpdated.listen(
       (purchaseDetailsList) {
         _listenToPurchaseUpdated(purchaseDetailsList);
       },
-      onDone: () {
-        _subscription.cancel();
-      },
-      onError: (error) {
-        _showSnackBar("Error de conexión con la tienda");
-      },
+      onDone: () => _subscription.cancel(),
+      onError: (error) => _showSnackBar("Error de conexión"),
     );
   }
 
@@ -56,7 +49,6 @@ class _PatientDashboardState extends State<PatientDashboard> {
   void _checkAuthStatus() {
     FirebaseAuth.instance.authStateChanges().listen((User? user) {
       if (user == null && mounted) {
-        // Si la sesión expira (como te pasó tras 4h), volvemos al inicio
         Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(builder: (context) => const WelcomeScreen()),
@@ -69,14 +61,8 @@ class _PatientDashboardState extends State<PatientDashboard> {
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
+    if (user == null)
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
-
-    // Calculamos el límite exacto de hace 24 horas
-    final DateTime limit24h = DateTime.now().subtract(
-      const Duration(hours: 24),
-    );
 
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance
@@ -84,33 +70,55 @@ class _PatientDashboardState extends State<PatientDashboard> {
           .doc(user.uid)
           .snapshots(),
       builder: (context, userSnapshot) {
-        if (!userSnapshot.hasData) {
+        if (!userSnapshot.hasData)
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
           );
-        }
 
         final userData = userSnapshot.data?.data() as Map<String, dynamic>?;
         final bool isPremium = userData?['subscription_status'] == 'premium';
 
         return Scaffold(
-          backgroundColor: Colors.white,
+          backgroundColor: const Color(
+            0xFFF8F9FE,
+          ), // Color de fondo moderno (off-white azulado)
           appBar: AppBar(
             elevation: 0,
-            backgroundColor: Colors.white,
+            backgroundColor: Colors.transparent,
             foregroundColor: Colors.black,
-            title: Text(
-              isPremium ? "Historial Completo" : "Mi Glucosa (24h)",
-              style: const TextStyle(fontWeight: FontWeight.bold),
+            centerTitle: false,
+            title: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Hola, ${userData?['full_name']?.split(' ')[0] ?? 'Paciente'}",
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey,
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+                const Text(
+                  "Tu Resumen de Salud",
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+              ],
             ),
             actions: [
               IconButton(
                 onPressed: _generatedLinkingCode,
-                icon: const Icon(
-                  Icons.person_add_alt_1_rounded,
-                  color: Colors.blue,
+                icon: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.person_add_alt_1_rounded,
+                    color: Colors.blue,
+                    size: 20,
+                  ),
                 ),
-                tooltip: "Vincular con familiar",
               ),
               IconButton(
                 icon: const Icon(Icons.logout_rounded),
@@ -123,179 +131,440 @@ class _PatientDashboardState extends State<PatientDashboard> {
                 .collection('glucose_logs')
                 .where('user_id', isEqualTo: user.uid)
                 .snapshots(),
-            builder: (context, snapshot) {
-              if (snapshot.hasError) {
-                return const Center(child: Text("Error de conexión."));
-              }
-              if (!snapshot.hasData) {
-                return const Center(child: CircularProgressIndicator());
-              }
+            builder: (context, glucoseSnapshot) {
+              return StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('blood_pressure_logs')
+                    .where('user_id', isEqualTo: user.uid)
+                    .snapshots(),
+                builder: (context, pressureSnapshot) {
+                  if (!glucoseSnapshot.hasData || !pressureSnapshot.hasData)
+                    return const Center(child: CircularProgressIndicator());
 
-              final allDocs = snapshot.data!.docs;
+                  List<Map<String, dynamic>> allLogs = [];
+                  for (var doc in glucoseSnapshot.data!.docs) {
+                    var data = doc.data() as Map<String, dynamic>;
+                    data['type'] = 'glucose';
+                    allLogs.add(data);
+                  }
+                  for (var doc in pressureSnapshot.data!.docs) {
+                    var data = doc.data() as Map<String, dynamic>;
+                    data['type'] = 'pressure';
+                    allLogs.add(data);
+                  }
+                  allLogs.sort(
+                    (a, b) => (b['created_at'] as Timestamp).compareTo(
+                      a['created_at'] as Timestamp,
+                    ),
+                  );
 
-              // LÓGICA DE FILTRADO 24 HORAS:
-              // Si es Premium: Muestra todo.
-              // Si es Gratis: Solo registros cuya fecha sea posterior a 'limit24h'.
-              List<QueryDocumentSnapshot> logs = isPremium
-                  ? allDocs
-                  : allDocs.where((doc) {
-                      final timestamp = doc['created_at'] as Timestamp?;
-                      if (timestamp == null) return false;
-                      return timestamp.toDate().isAfter(limit24h);
-                    }).toList();
-
-              // Ordenar: Más reciente primero
-              logs.sort((a, b) {
-                Timestamp t1 = a['created_at'] ?? Timestamp.now();
-                Timestamp t2 = b['created_at'] ?? Timestamp.now();
-                return t2.compareTo(t1);
-              });
-
-              return RefreshIndicator(
-                onRefresh: () async => setState(() {}),
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        isPremium
-                            ? "Tendencia General"
-                            : "Tendencia (Últimas 24h)",
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      SizedBox(
-                        height: 200,
-                        child: logs.isEmpty
-                            ? const Center(
-                                child: Text("No hay datos en las últimas 24h"),
-                              )
-                            : _buildChart(logs.reversed.toList()),
-                      ),
-
-                      const SizedBox(height: 30),
-                      if (!isPremium) _buildPremiumBanner(context),
-
-                      const SizedBox(height: 30),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  return RefreshIndicator(
+                    onRefresh: () async => setState(() {}),
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // El Expanded obliga al texto a no pasarse del espacio disponible
-                          Expanded(
-                            child: Text(
-                              isPremium
-                                  ? "Historial de Registros"
-                                  : "Registros Recientes (24h)",
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              overflow: TextOverflow
-                                  .ellipsis, // Si es muy largo, pone "..."
-                            ),
+                          const SizedBox(height: 20),
+                          _buildQuickSummary(allLogs),
+                          const SizedBox(height: 30),
+                          _buildChartSection(allLogs, isPremium),
+                          const SizedBox(height: 30),
+                          _buildHistoryHeader(allLogs, user, isPremium),
+                          const SizedBox(height: 10),
+                          ListView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: allLogs.length,
+                            itemBuilder: (context, index) =>
+                                _buildUnifiedLogTile(allLogs[index]),
                           ),
-                          const SizedBox(
-                            width: 8,
-                          ), // Un pequeño espacio de respiro
-                          TextButton.icon(
-                            onPressed: () => _generatePdfReport(
-                              logs,
-                              user.displayName ?? "Paciente",
-                              isPremium,
-                            ),
-                            icon: const Icon(
-                              Icons.picture_as_pdf,
-                              size: 20,
-                              color: Colors.red,
-                            ),
-                            label: Text(
-                              isPremium ? "Exportar Todo" : "PDF Hoy",
-                              style: const TextStyle(
-                                color: Colors.red,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
+                          const SizedBox(height: 100),
                         ],
                       ),
-                      const SizedBox(height: 10),
-
-                      ListView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: logs.length,
-                        itemBuilder: (context, index) {
-                          final data =
-                              logs[index].data() as Map<String, dynamic>;
-                          return _buildLogTile(data);
-                        },
-                      ),
-
-                      if (!isPremium && allDocs.length > logs.length)
-                        _buildLockedHistoryInfo(), // El widget que dice que hay más datos bloqueados
-                    ],
-                  ),
-                ),
+                    ),
+                  );
+                },
               );
             },
           ),
-          // EL BOTÓN DE AGREGAR SIEMPRE ESTÁ PRESENTE
-          floatingActionButton: FloatingActionButton(
+          floatingActionButton: FloatingActionButton.extended(
             onPressed: () => _showAddEntry(context),
-            backgroundColor: Colors.blue.shade800,
-            child: const Icon(Icons.add, color: Colors.white),
+            backgroundColor: const Color(0xFF1E2746),
+            icon: const Icon(Icons.add, color: Colors.white),
+            label: const Text(
+              "Añadir",
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
         );
       },
     );
   }
 
-  Widget _buildLockedHistoryInfo() {
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(top: 20, bottom: 40),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade50,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: Column(
-        children: [
-          Icon(
-            Icons.history_toggle_off_rounded,
-            color: Colors.blue.shade200,
-            size: 40,
-          ),
-          const SizedBox(height: 15),
-          const Text(
-            "Historial antiguo bloqueado",
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            "Solo puedes ver las últimas 24 horas. Para acceder a todo tu historial y descargar reportes, activa el Plan Premium.",
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.grey, fontSize: 13),
-          ),
-          const SizedBox(height: 15),
-          TextButton(
-            onPressed: () => _showPremiumModal(context),
-            child: Text(
-              "SABER MÁS",
+  Widget _buildQuickSummary(List<Map<String, dynamic>> logs) {
+    final lastGluc = logs.firstWhere(
+      (l) => l['type'] == 'glucose',
+      orElse: () => {},
+    );
+    final lastPress = logs.firstWhere(
+      (l) => l['type'] == 'pressure',
+      orElse: () => {},
+    );
+
+    return Row(
+      children: [
+        _summaryCard(
+          "Glucosa",
+          lastGluc['value']?.toString() ?? "--",
+          "mg/dL",
+          Icons.water_drop,
+          Colors.blue,
+        ),
+        const SizedBox(width: 15),
+        _summaryCard(
+          "Presión",
+          lastPress['systolic'] != null
+              ? "${lastPress['systolic']}/${lastPress['diastolic']}"
+              : "--",
+          "mmHg",
+          Icons.favorite,
+          Colors.redAccent,
+        ),
+      ],
+    );
+  }
+
+  Widget _summaryCard(
+    String title,
+    String value,
+    String unit,
+    IconData icon,
+    Color color,
+  ) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.03),
+              blurRadius: 10,
+              offset: const Offset(0, 5),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: color, size: 18),
+            ),
+            const SizedBox(height: 15),
+            Text(
+              value,
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            ),
+            Text(
+              "$title ($unit)",
               style: TextStyle(
-                color: Colors.blue.shade800,
-                fontWeight: FontWeight.bold,
+                color: Colors.grey.shade500,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChartSection(List<Map<String, dynamic>> logs, bool isPremium) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 5),
           ),
         ],
       ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                isPremium ? "Tendencia Semanal" : "Tendencia (24h)",
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+              const Icon(Icons.show_chart, color: Colors.grey, size: 20),
+            ],
+          ),
+          const SizedBox(height: 20),
+          SizedBox(height: 180, child: _buildChart(logs)),
+        ],
+      ),
     );
+  }
+
+  Widget _buildHistoryHeader(
+    List<Map<String, dynamic>> allLogs,
+    User user,
+    bool isPremium,
+  ) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        const Text(
+          "Historial Médico",
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+        TextButton(
+          onPressed: () => _generatePdfReport(
+            allLogs,
+            user.displayName ?? "Paciente",
+            isPremium,
+          ),
+          style: TextButton.styleFrom(
+            backgroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+          child: Row(
+            children: const [
+              Icon(
+                Icons.picture_as_pdf_rounded,
+                color: Colors.redAccent,
+                size: 18,
+              ),
+              SizedBox(width: 5),
+              Text(
+                "PDF",
+                style: TextStyle(
+                  color: Colors.black,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildUnifiedLogTile(Map<String, dynamic> data) {
+    final bool isGluc = data['type'] == 'glucose';
+    final DateTime date = (data['created_at'] as Timestamp).toDate();
+    final bool isHigh = data['is_high_risk'] ?? false;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isHigh ? Colors.red.withOpacity(0.2) : Colors.transparent,
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: (isGluc ? Colors.blue : Colors.red).withOpacity(0.1),
+              borderRadius: BorderRadius.circular(15),
+            ),
+            child: Icon(
+              isGluc ? Icons.bloodtype_outlined : Icons.favorite_outline,
+              color: isGluc ? Colors.blue : Colors.red,
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 15),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isGluc
+                      ? "${data['value']} mg/dL"
+                      : "${data['systolic']}/${data['diastolic']} mmHg",
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                Text(
+                  DateFormat('hh:mm a • d MMM').format(date),
+                  style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          if (isHigh)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Text(
+                "ALERTA",
+                style: TextStyle(
+                  color: Colors.red,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChart(List<Map<String, dynamic>> allLogs) {
+    final reversedLogs = allLogs.reversed.toList();
+    List<FlSpot> glucoseSpots = [];
+    List<FlSpot> pressureSpots = [];
+
+    for (int i = 0; i < reversedLogs.length; i++) {
+      final log = reversedLogs[i];
+      if (log['type'] == 'glucose')
+        glucoseSpots.add(
+          FlSpot(i.toDouble(), (log['value'] as num).toDouble()),
+        );
+      else if (log['type'] == 'pressure')
+        pressureSpots.add(
+          FlSpot(i.toDouble(), (log['systolic'] as num).toDouble()),
+        );
+    }
+
+    return LineChart(
+      LineChartData(
+        lineTouchData: LineTouchData(
+          touchTooltipData: LineTouchTooltipData(
+            getTooltipColor: (spot) => const Color(0xFF1E2746),
+            getTooltipItems: (spots) => spots
+                .map(
+                  (s) => LineTooltipItem(
+                    "${s.barIndex == 0 ? 'Gluco' : 'Pres'}: ${s.y.toInt()}",
+                    const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                )
+                .toList(),
+          ),
+        ),
+        gridData: const FlGridData(show: false),
+        titlesData: const FlTitlesData(show: false),
+        borderData: FlBorderData(show: false),
+        lineBarsData: [
+          if (glucoseSpots.isNotEmpty)
+            LineChartBarData(
+              spots: glucoseSpots,
+              isCurved: true,
+              color: Colors.blue,
+              barWidth: 4,
+              dotData: const FlDotData(show: false),
+              belowBarData: BarAreaData(
+                show: true,
+                color: Colors.blue.withOpacity(0.05),
+              ),
+            ),
+          if (pressureSpots.isNotEmpty)
+            LineChartBarData(
+              spots: pressureSpots,
+              isCurved: true,
+              color: Colors.redAccent,
+              barWidth: 4,
+              dotData: const FlDotData(show: false),
+              belowBarData: BarAreaData(
+                show: true,
+                color: Colors.redAccent.withOpacity(0.05),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // --- MÉTODOS DE APOYO (Mantener igual que antes) ---
+  void _showAddEntry(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors
+          .transparent, // Para que el modal se vea moderno con bordes redondeados
+      builder: (context) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+        ),
+        child: const AddEntryModal(),
+      ),
+    );
+  }
+
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+    );
+  }
+
+  String _getRelativeDate(DateTime date) {
+    final now = DateTime.now();
+    if (date.day == now.day) return "Hoy";
+    if (date.day == now.day - 1) return "Ayer";
+    return DateFormat('dd/MM/yyyy').format(date);
+  }
+
+  // Los métodos _listenToPurchaseUpdated, _startPurchaseFlow, _updateUserToPremium, _generatedLinkingCode, _generatePdfReport, _showCodeDialog, _showPremiumModal y _buildFeatureRow se mantienen igual para no perder funcionalidad.
+  // ... (Código anterior de esos métodos)
+  void _listenToPurchaseUpdated(List<PurchaseDetails> purchaseDetailsList) {
+    purchaseDetailsList.forEach((PurchaseDetails purchaseDetails) async {
+      if (purchaseDetails.status == PurchaseStatus.pending) {
+        // Mostrar un indicador de carga si quieres
+      } else {
+        if (purchaseDetails.status == PurchaseStatus.error) {
+          _showSnackBar("Error en el pago: ${purchaseDetails.error}");
+        } else if (purchaseDetails.status == PurchaseStatus.purchased ||
+            purchaseDetails.status == PurchaseStatus.restored) {
+          // ¡ÉXITO! Actualizamos Firestore
+          await _updateUserToPremium();
+          _showSnackBar("¡Felicidades! Ya eres Premium.");
+        }
+
+        // Siempre hay que finalizar la compra para que Google no devuelva el dinero
+        if (purchaseDetails.pendingCompletePurchase) {
+          await _inAppPurchase.completePurchase(purchaseDetails);
+        }
+      }
+    });
   }
 
   Future<void> _startPurchaseFlow() async {
@@ -337,144 +606,220 @@ class _PatientDashboardState extends State<PatientDashboard> {
     });
   }
 
-  // --- WIDGETS AUXILIARES MEJORADOS ---
-
-  Widget _buildPremiumBanner(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: Colors.blue.shade50,
-        borderRadius: BorderRadius.circular(15),
-      ),
-      child: Column(
-        children: [
-          const Text(
-            "¿Quieres ver más de 24 horas?",
-            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue),
-          ),
-          TextButton.icon(
-            onPressed: () => _showPremiumModal(context),
-            icon: const Icon(Icons.star, color: Colors.amber, size: 20),
-            label: const Text("Pásate a Premium"),
-          ),
-        ],
-      ),
-    );
+  Future<void> _updateUserToPremium() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).update(
+        {'subscription_status': 'premium'},
+      );
+    }
   }
 
-  Widget _buildChart(List<QueryDocumentSnapshot> logs) {
-    List<FlSpot> spots = [];
-    for (int i = 0; i < logs.length; i++) {
-      double val = (logs[i]['value'] as num).toDouble();
-      spots.add(FlSpot(i.toDouble(), val));
+  Future<void> _generatedLinkingCode() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    // 1. Generar código de 6 caracteres
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    String code = String.fromCharCodes(
+      Iterable.generate(
+        6,
+        (_) => chars.codeUnitAt(Random().nextInt(chars.length)),
+      ),
+    );
+
+    try {
+      // 2. Guardar en la colección global de conexiones
+      await FirebaseFirestore.instance.collection('connections').doc(code).set({
+        'patientId': user.uid,
+        'patientName': user.displayName ?? 'Familiar',
+        'createdAt': FieldValue.serverTimestamp(),
+        'expiresAt': DateTime.now().add(
+          const Duration(hours: 1),
+        ), // El código expira en 1h
+      });
+
+      // 3. Mostrar el código en un Dialog
+      _showCodeDialog(code);
+    } catch (e) {
+      debugPrint("Error al generar codigo: $e");
     }
+  }
 
-    return LineChart(
-      LineChartData(
-        // CONFIGURACIÓN DE INTERACCIÓN (TOOLTIP)
-        lineTouchData: LineTouchData(
-          touchTooltipData: LineTouchTooltipData(
-            getTooltipColor: (touchedSpot) => Colors.blue.shade900,
-            tooltipBorderRadius: BorderRadius.all(Radius.circular(12)),
-            getTooltipItems: (List<LineBarSpot> touchedSpots) {
-              return touchedSpots.map((LineBarSpot touchedSpot) {
-                final index = touchedSpot.x.toInt();
-                final data = logs[index].data() as Map<String, dynamic>;
-                final int value = data['value'] ?? 0;
-                final DateTime date = (data['created_at'] as Timestamp)
-                    .toDate();
-
-                return LineTooltipItem(
-                  // Mostramos: "120 mg/dL \n Hoy - 08:30 AM \n Ayunas"
-                  "$value mg/dL\n${_getRelativeDate(date)} - ${DateFormat('hh:mm a').format(date)}\n${data['timing']}",
-                  const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 11,
-                  ),
-                );
-              }).toList();
-            },
-          ),
-          handleBuiltInTouches: true, // Habilita que responda al toque
-        ),
-        gridData: const FlGridData(show: false),
-        titlesData: const FlTitlesData(show: false),
-        borderData: FlBorderData(show: false),
-        lineBarsData: [
-          LineChartBarData(
-            spots: spots,
-            isCurved: true,
-            color: Colors.blue.shade700,
-            barWidth: 4,
-            dotData: const FlDotData(show: true),
-            belowBarData: BarAreaData(
-              show: true,
-              color: Colors.blue.shade700.withOpacity(0.1),
+  void _showCodeDialog(String code) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text("Código de Vinculación", textAlign: TextAlign.center),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text("Dicta este código a tu familiar:"),
+            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                code,
+                style: const TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 5,
+                  color: Colors.blue,
+                ),
+              ),
             ),
+            const SizedBox(height: 10),
+            const Text(
+              "Este código expirará en 1 hora",
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cerrar"),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildLogTile(Map<String, dynamic> data) {
-    DateTime date = DateTime.now();
-    if (data['created_at'] != null) {
-      date = (data['created_at'] as Timestamp).toDate();
-    }
+  Future<void> _generatePdfReport(
+    List<Map<String, dynamic>> allLogs, // Ahora recibe la lista combinada
+    String patientName,
+    bool isPremium,
+  ) async {
+    final pdf = pw.Document();
+    final DateTime now = DateTime.now();
 
-    final int value = data['value'] ?? 0;
-    final bool isCritical = value > 180 || value < 70;
+    // Separar logs para las tablas
+    final glucoseLogs = allLogs.where((l) => l['type'] == 'glucose').toList();
+    final pressureLogs = allLogs.where((l) => l['type'] == 'pressure').toList();
 
-    return Card(
-      elevation: 0,
-      color: Colors.grey.shade50,
-      margin: const EdgeInsets.only(bottom: 10),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-      child: ListTile(
-        leading: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: isCritical ? Colors.red.shade50 : Colors.green.shade50,
-            shape: BoxShape.circle,
-          ),
-          child: Icon(
-            Icons.bloodtype,
-            color: isCritical ? Colors.red : Colors.green,
-          ),
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(32),
+        header: (context) => pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            pw.Text(
+              "My Health Log - Reporte Médico",
+              style: pw.TextStyle(
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.blue900,
+              ),
+            ),
+            pw.Text(DateFormat('dd/MM/yyyy').format(now)),
+          ],
         ),
-        title: Text(
-          "$value mg/dL",
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            color: isCritical ? Colors.red : Colors.black,
-          ),
-        ),
-        subtitle: Text(
-          // Aquí está la clave: "Hoy", "Ayer" o Fecha + Hora + Momento
-          "${_getRelativeDate(date)} • ${DateFormat('hh:mm a').format(date)} - ${data['timing']}",
-          style: const TextStyle(fontSize: 12),
-        ),
+        build: (pw.Context context) {
+          return [
+            pw.Header(level: 0, child: pw.Text("Paciente: $patientName")),
+
+            // SECCIÓN 1: GLUCOSA
+            if (glucoseLogs.isNotEmpty) ...[
+              pw.SizedBox(height: 20),
+              pw.Text(
+                "1. Registro de Glucosa Capilar",
+                style: pw.TextStyle(
+                  fontSize: 16,
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.blue,
+                ),
+              ),
+              pw.SizedBox(height: 10),
+              pw.TableHelper.fromTextArray(
+                headers: ['Fecha', 'Momento', 'Valor', 'Riesgo'],
+                data: glucoseLogs
+                    .map(
+                      (l) => [
+                        _getRelativeDate(
+                          (l['created_at'] as Timestamp).toDate(),
+                        ),
+                        l['timing'] ?? '-',
+                        "${l['value']} mg/dL",
+                        (l['is_high_risk'] ?? false) ? "ELEVADO" : "NORMAL",
+                      ],
+                    )
+                    .toList(),
+                headerStyle: pw.TextStyle(
+                  color: PdfColors.white,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+                headerDecoration: const pw.BoxDecoration(
+                  color: PdfColors.blue700,
+                ),
+              ),
+            ],
+
+            // SECCIÓN 2: PRESIÓN ARTERIAL (El nuevo valor agregado)
+            if (pressureLogs.isNotEmpty) ...[
+              pw.SizedBox(height: 40),
+              pw.Text(
+                "2. Registro de Presión Arterial y Pulso",
+                style: pw.TextStyle(
+                  fontSize: 16,
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.red,
+                ),
+              ),
+              pw.SizedBox(height: 10),
+              pw.TableHelper.fromTextArray(
+                headers: ['Fecha', 'Presión (Sis/Dia)', 'Pulso', 'Estado'],
+                data: pressureLogs
+                    .map(
+                      (l) => [
+                        _getRelativeDate(
+                          (l['created_at'] as Timestamp).toDate(),
+                        ),
+                        "${l['systolic']}/${l['diastolic']} mmHg",
+                        "${l['pulse']} LPM",
+                        (l['is_high_risk'] ?? false)
+                            ? "HIPERTENSIÓN"
+                            : "NORMAL",
+                      ],
+                    )
+                    .toList(),
+                headerStyle: pw.TextStyle(
+                  color: PdfColors.white,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+                headerDecoration: const pw.BoxDecoration(
+                  color: PdfColors.red700,
+                ),
+              ),
+            ],
+
+            if (glucoseLogs.isEmpty && pressureLogs.isEmpty)
+              pw.Center(
+                child: pw.Text(
+                  "No hay registros para mostrar en este periodo.",
+                ),
+              ),
+
+            pw.SizedBox(height: 50),
+            pw.Divider(),
+            pw.Center(
+              child: pw.Text(
+                "Este reporte es informativo. No sustituye el diagnóstico de un profesional de la salud.",
+                style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey),
+              ),
+            ),
+          ];
+        },
       ),
     );
+
+    await Printing.layoutPdf(onLayout: (format) async => pdf.save());
   }
 
-  Widget _buildFeatureRow(IconData icon, String text) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(
-        children: [
-          Icon(icon, size: 20, color: Colors.green),
-          const SizedBox(width: 10),
-          Text(text, style: const TextStyle(fontSize: 14)),
-        ],
-      ),
-    );
-  }
-
-  // Modales se mantienen igual pero asegúrate de que el context sea válido
   void _showPremiumModal(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -535,282 +880,16 @@ class _PatientDashboardState extends State<PatientDashboard> {
     );
   }
 
-  void _showAddEntry(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      // Quitamos el transparent de aquí para que el fondo sea el por defecto (blanco/gris)
-      // O lo mantenemos pero aseguramos que el modal tenga estilo:
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
-      ),
-      backgroundColor: Colors.white, // <--- Forzamos el color blanco aquí
-      builder: (context) => const AddEntryModal(),
-    );
-  }
-
-  void _listenToPurchaseUpdated(List<PurchaseDetails> purchaseDetailsList) {
-    purchaseDetailsList.forEach((PurchaseDetails purchaseDetails) async {
-      if (purchaseDetails.status == PurchaseStatus.pending) {
-        // Mostrar un indicador de carga si quieres
-      } else {
-        if (purchaseDetails.status == PurchaseStatus.error) {
-          _showSnackBar("Error en el pago: ${purchaseDetails.error}");
-        } else if (purchaseDetails.status == PurchaseStatus.purchased ||
-            purchaseDetails.status == PurchaseStatus.restored) {
-          // ¡ÉXITO! Actualizamos Firestore
-          await _updateUserToPremium();
-          _showSnackBar("¡Felicidades! Ya eres Premium.");
-        }
-
-        // Siempre hay que finalizar la compra para que Google no devuelva el dinero
-        if (purchaseDetails.pendingCompletePurchase) {
-          await _inAppPurchase.completePurchase(purchaseDetails);
-        }
-      }
-    });
-  }
-
-  void _showSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        behavior: SnackBarBehavior.floating, // Para que se vea más moderno
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        duration: const Duration(seconds: 3),
-      ),
-    );
-  }
-
-  Future<void> _updateUserToPremium() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).update(
-        {'subscription_status': 'premium'},
-      );
-    }
-  }
-
-  Future<void> _generatedLinkingCode() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    // 1. Generar código de 6 caracteres
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    String code = String.fromCharCodes(
-      Iterable.generate(
-        6,
-        (_) => chars.codeUnitAt(Random().nextInt(chars.length)),
-      ),
-    );
-
-    try {
-      // 2. Guardar en la colección global de conexiones
-      await FirebaseFirestore.instance.collection('connections').doc(code).set({
-        'patientId': user.uid,
-        'patientName': user.displayName ?? 'Familiar',
-        'createdAt': FieldValue.serverTimestamp(),
-        'expiresAt': DateTime.now().add(
-          const Duration(hours: 1),
-        ), // El código expira en 1h
-      });
-
-      // 3. Mostrar el código en un Dialog
-      _showCodeDialog(code);
-    } catch (e) {
-      debugPrint("Error al generar codigo: $e");
-    }
-  }
-
-  Future<void> _generatePdfReport(
-    List<QueryDocumentSnapshot> logs,
-    String patientName,
-    bool isPremium,
-  ) async {
-    final pdf = pw.Document();
-    final DateTime now = DateTime.now();
-    final chartLogs = logs.reversed.toList();
-
-    pdf.addPage(
-      pw.MultiPage(
-        pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.all(32),
-        build: (pw.Context context) {
-          return [
-            pw.Row(
-              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-              children: [
-                pw.Text(
-                  "Gluco Care ${isPremium ? 'Premium' : ''}",
-                  style: pw.TextStyle(
-                    fontSize: 22,
-                    fontWeight: pw.FontWeight.bold,
-                    color: PdfColors.blue900,
-                  ),
-                ),
-                pw.Text(
-                  DateFormat('dd/MM/yyyy HH:mm').format(now),
-                  style: const pw.TextStyle(color: PdfColors.grey),
-                ),
-              ],
-            ),
-            pw.SizedBox(height: 10),
-            pw.Text("Reporte Personal de Glucosa: $patientName"),
-            pw.Divider(color: PdfColors.blue900, thickness: 1.5),
-            pw.SizedBox(height: 20),
-
-            // Gráfica (Solo útil si hay datos)
-            if (logs.isNotEmpty) ...[
-              pw.Text(
-                "Gráfico de Tendencia",
-                style: pw.TextStyle(
-                  fontSize: 14,
-                  fontWeight: pw.FontWeight.bold,
-                ),
-              ),
-              pw.SizedBox(height: 10),
-              pw.Container(
-                height: 180,
-                child: pw.Chart(
-                  grid: pw.CartesianGrid(
-                    xAxis: pw.FixedAxis(
-                      List.generate(chartLogs.length, (i) => i.toDouble()),
-                      buildLabel: (i) => pw.Text(
-                        _getRelativeDate(
-                          (chartLogs[i.toInt()]['created_at'] as Timestamp)
-                              .toDate(),
-                        ),
-                        style: const pw.TextStyle(fontSize: 6),
-                      ),
-                    ),
-                    yAxis: pw.FixedAxis(
-                      [0, 50, 100, 150, 200, 250, 300],
-                      buildLabel: (v) =>
-                          pw.Text('$v', style: const pw.TextStyle(fontSize: 8)),
-                    ),
-                  ),
-                  datasets: [
-                    pw.LineDataSet(
-                      drawPoints: true,
-                      pointSize: 3,
-                      color: PdfColors.blue700,
-                      data: List.generate(
-                        chartLogs.length,
-                        (i) => pw.PointChartValue(
-                          i.toDouble(),
-                          (chartLogs[i]['value'] as num).toDouble(),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-            pw.SizedBox(height: 30),
-
-            // Tabla de Datos
-            pw.TableHelper.fromTextArray(
-              headers: ['Fecha', 'Momento', 'Valor (mg/dL)', 'Estado'],
-              data: logs.map((doc) {
-                final data = doc.data() as Map<String, dynamic>;
-                final int val = data['value'] ?? 0;
-                final DateTime date = (data['created_at'] as Timestamp)
-                    .toDate();
-                String status = val < 70
-                    ? "Bajo"
-                    : (val > 180
-                          ? "Crítico"
-                          : (val > 140 ? "Elevado" : "Normal"));
-                return [
-                  _getRelativeDate(date),
-                  data['timing'] ?? 'N/A',
-                  "$val",
-                  status,
-                ];
-              }).toList(),
-              headerStyle: pw.TextStyle(
-                fontWeight: pw.FontWeight.bold,
-                color: PdfColors.white,
-              ),
-              headerDecoration: const pw.BoxDecoration(
-                color: PdfColors.blue900,
-              ),
-              cellAlignment: pw.Alignment.center,
-              rowDecoration: const pw.BoxDecoration(
-                border: pw.Border(
-                  bottom: pw.BorderSide(color: PdfColors.grey100, width: .5),
-                ),
-              ),
-              cellDecoration: (index, data, rowNum) => rowNum % 2 == 0
-                  ? const pw.BoxDecoration(color: PdfColors.grey100)
-                  : const pw.BoxDecoration(),
-            ),
-          ];
-        },
-      ),
-    );
-
-    await Printing.layoutPdf(
-      onLayout: (PdfPageFormat format) async => pdf.save(),
-    );
-  }
-
-  void _showCodeDialog(String code) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text("Código de Vinculación", textAlign: TextAlign.center),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text("Dicta este código a tu familiar:"),
-            const SizedBox(height: 20),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              decoration: BoxDecoration(
-                color: Colors.blue.shade50,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text(
-                code,
-                style: const TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 5,
-                  color: Colors.blue,
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-            const Text(
-              "Este código expirará en 1 hora",
-              style: TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cerrar"),
-          ),
+  Widget _buildFeatureRow(IconData icon, String text) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: Colors.green),
+          const SizedBox(width: 10),
+          Text(text, style: const TextStyle(fontSize: 14)),
         ],
       ),
     );
-  }
-
-  String _getRelativeDate(DateTime date) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final yesterday = today.subtract(const Duration(days: 1));
-    final dateToCheck = DateTime(date.year, date.month, date.day);
-
-    if (dateToCheck == today) {
-      return "Hoy";
-    } else if (dateToCheck == yesterday) {
-      return "Ayer";
-    } else {
-      return DateFormat('dd/MM/yyyy').format(date);
-    }
   }
 }
