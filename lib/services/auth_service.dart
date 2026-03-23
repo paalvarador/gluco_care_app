@@ -15,7 +15,6 @@ class AuthService {
     String role,
   ) async {
     try {
-      // 1. Crear el usuario en Firebase Auth
       UserCredential result = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
@@ -23,16 +22,16 @@ class AuthService {
       User? user = result.user;
 
       if (user != null) {
-        // 2. Guardar los datos adicionales en Firestore usando las tablas en inglés que definimos
+        // --- CAMBIO PARA EL SAAS ---
         await _db.collection('users').doc(user.uid).set({
           'uid': user.uid,
           'full_name': fullName,
           'email': email,
-          'role': role, // 'patient' o 'caregiver'
-          'subscription_status': 'trial',
-          'trial_end_date': DateTime.now().add(const Duration(days: 7)),
+          'role': role,
+          'subscription_status': 'free', // Iniciamos en Free de ley
+          'caregivers_count': 0, // Contador de cuidadores vinculados
           'created_at': FieldValue.serverTimestamp(),
-          'customer_id': '', // Se llenará con RevenueCat después
+          'customer_id': '', // Para RevenueCat/Stripe
         });
       }
       return user;
@@ -85,7 +84,8 @@ class AuthService {
       'full_name': name,
       'email': email,
       'role': role,
-      'subscription_status': 'trial',
+      'subscription_status': 'free', // Plan inicial
+      'caregivers_count': 0, // Necesario para validar el límite
       'created_at': FieldValue.serverTimestamp(),
     });
   }
