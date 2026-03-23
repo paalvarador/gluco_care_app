@@ -602,33 +602,73 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
   Future<void> _linkPatient(String code) async {
     setState(() => _isSaving = true);
     try {
-      final doc = await FirebaseFirestore.instance
+      // 1. Buscamos la conexión por el código
+      final connectionDoc = await FirebaseFirestore.instance
           .collection('connections')
           .doc(code)
           .get();
 
-      if (doc.exists) {
-        String patientId = doc['patientId'];
-        String patientName = doc['patientName'];
-
-        final currentUser = FirebaseAuth.instance.currentUser;
-
-        // Al actualizar Firestore, el StreamBuilder del build() detectará el cambio automáticamente
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(currentUser!.uid)
-            .update({
-              'linkedPatientId': patientId,
-              'linkedPatientName': patientName,
-            });
-
-        _showSnackBar("¡Vinculación exitosa!", Colors.green);
-      } else {
+      if (!connectionDoc.exists) {
         _showSnackBar(
           "Código no encontrado. Verifica con tu familiar.",
           Colors.red,
         );
+        return;
       }
+
+      String patientId = connectionDoc['patientId'];
+      String patientName = connectionDoc['patientName'];
+
+      // 2. Obtenemos el perfil del Paciente para ver su suscripción y cuántos tiene
+      final patientDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(patientId)
+          .get();
+
+      final patientData = patientDoc.data() as Map<String, dynamic>;
+      String plan =
+          patientData['subscription_plan'] ??
+          'free'; // 'basic', 'family', 'premium'
+      int currentCaregivers = patientData['caregiversCount'] ?? 0;
+
+      // 3. Lógica de validación de límites (Tus nuevos planes)
+      int limit = 0;
+      if (plan == 'basic') limit = 1; // Plan $4.99
+      if (plan == 'family') limit = 3; // Plan $9.99
+      if (plan == 'premium') limit = 999; // Plan $19.99 (Ilimitado)
+
+      if (currentCaregivers >= limit) {
+        _showSnackBar(
+          "El paciente ya alcanzó el límite de cuidadores para su plan ($plan).",
+          Colors.orange,
+        );
+        return;
+      }
+
+      // 4. Si pasa la validación, vinculamos
+      final currentUser = FirebaseAuth.instance.currentUser;
+
+      // Usamos un WriteBatch para que ambas actualizaciones ocurran o fallen juntas
+      WriteBatch batch = FirebaseFirestore.instance.batch();
+
+      // Actualizar al Cuidador
+      batch.update(
+        FirebaseFirestore.instance.collection('users').doc(currentUser!.uid),
+        {
+          'linkedPatientId': patientId,
+          'linkedPatientName': patientName,
+          'role': 'caregiver',
+        },
+      );
+
+      // Incrementar el contador en el Paciente
+      batch.update(
+        FirebaseFirestore.instance.collection('users').doc(patientId),
+        {'caregiversCount': FieldValue.increment(1)},
+      );
+
+      await batch.commit();
+      _showSnackBar("¡Vinculación exitosa!", Colors.green);
     } catch (e) {
       _showSnackBar("Error: $e", Colors.red);
     } finally {

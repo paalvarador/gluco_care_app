@@ -44,11 +44,22 @@ class AuthService {
 
   Future<User?> signInWithGoogle() async {
     try {
-      final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
+      // 1. CONFIGURACIÓN CRÍTICA PARA ANDROID
+      final GoogleSignIn googleSignIn = GoogleSignIn(
+        // REEMPLAZA ESTO con el "Web client ID" que copiamos de Google Cloud Console
+        // El que termina en .apps.googleusercontent.com
+        serverClientId:
+            '733119792621-g7hnf8utvegosd2jkn1cfb6mcudut5pn.apps.googleusercontent.com',
+        scopes: ['email', 'https://www.googleapis.com/auth/userinfo.profile'],
+      );
+
+      // 2. INICIAR EL FLUJO
+      final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
       if (googleUser == null) return null;
 
       final GoogleSignInAuthentication googleAuth =
           await googleUser.authentication;
+
       final AuthCredential credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
@@ -57,7 +68,7 @@ class AuthService {
       UserCredential result = await _auth.signInWithCredential(credential);
       return result.user;
     } catch (e) {
-      debugPrint("Error: $e");
+      debugPrint("Error detallado en Google SignIn: $e");
       return null;
     }
   }
