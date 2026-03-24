@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:gluco_care_app/models/plan_config.dart';
 import 'package:intl/intl.dart';
 import 'add_entry_modal.dart';
 import 'welcome_screen.dart';
@@ -61,8 +62,10 @@ class _PatientDashboardState extends State<PatientDashboard> {
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null)
+
+    if (user == null) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
 
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance
@@ -70,12 +73,22 @@ class _PatientDashboardState extends State<PatientDashboard> {
           .doc(user.uid)
           .snapshots(),
       builder: (context, userSnapshot) {
-        if (!userSnapshot.hasData)
+        if (!userSnapshot.hasData) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
           );
+        }
 
         final userData = userSnapshot.data?.data() as Map<String, dynamic>?;
+        final plan = PlanConfig.getSettings(
+          userData?['subscription_status'] ?? 'free',
+        );
+
+        DateTime cutOffDate = DateTime.now().subtract(
+          Duration(days: plan.historyDays),
+        );
+        Timestamp cutOffTimestamp = Timestamp.fromDate(cutOffDate);
+
         final bool isPremium = userData?['subscription_status'] == 'premium';
 
         return Scaffold(
@@ -93,9 +106,9 @@ class _PatientDashboardState extends State<PatientDashboard> {
                 Text(
                   "Hola, ${userData?['full_name']?.split(' ')[0] ?? 'Paciente'}",
                   style: const TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey,
-                    fontWeight: FontWeight.w400,
+                    fontSize: 19,
+                    color: Colors.blueAccent,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
                 const Text(
@@ -130,16 +143,38 @@ class _PatientDashboardState extends State<PatientDashboard> {
             stream: FirebaseFirestore.instance
                 .collection('glucose_logs')
                 .where('user_id', isEqualTo: user.uid)
+                .where('created_at', isGreaterThanOrEqualTo: cutOffTimestamp)
+                .orderBy('created_at', descending: true)
                 .snapshots(),
             builder: (context, glucoseSnapshot) {
               return StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance
                     .collection('blood_pressure_logs')
                     .where('user_id', isEqualTo: user.uid)
+                    .where(
+                      'created_at',
+                      isGreaterThanOrEqualTo: cutOffTimestamp,
+                    )
+                    .orderBy('created_at', descending: true)
                     .snapshots(),
                 builder: (context, pressureSnapshot) {
-                  if (!glucoseSnapshot.hasData || !pressureSnapshot.hasData)
+                  if (glucoseSnapshot.hasError) {
+                    return Center(
+                      child: SelectableText(
+                        "ERROR GLUCOSA: ${glucoseSnapshot.error}",
+                      ),
+                    );
+                  }
+                  if (pressureSnapshot.hasError) {
+                    return Center(
+                      child: SelectableText(
+                        "ERROR PRESIÓN: ${pressureSnapshot.error}",
+                      ),
+                    );
+                  }
+                  if (!glucoseSnapshot.hasData) {
                     return const Center(child: CircularProgressIndicator());
+                  }
 
                   List<Map<String, dynamic>> allLogs = [];
                   for (var doc in glucoseSnapshot.data!.docs) {
@@ -166,6 +201,7 @@ class _PatientDashboardState extends State<PatientDashboard> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const SizedBox(height: 20),
+                          _buildSubscriptionBanner(userData?['subscription_status'] ?? 'free'),
                           _buildQuickSummary(allLogs),
                           const SizedBox(height: 30),
                           _buildChartSection(allLogs, isPremium),
@@ -451,11 +487,12 @@ class _PatientDashboardState extends State<PatientDashboard> {
 
     for (int i = 0; i < reversedLogs.length; i++) {
       final log = reversedLogs[i];
-      if (log['type'] == 'glucose')
+      if (log['type'] == 'glucose') {
         glucoseSpots.add(
           FlSpot(i.toDouble(), (log['value'] as num).toDouble()),
         );
-      else if (log['type'] == 'pressure')
+      } else if (log['type'] == 'pressure')
+        // ignore: curly_braces_in_flow_control_structures
         pressureSpots.add(
           FlSpot(i.toDouble(), (log['systolic'] as num).toDouble()),
         );
@@ -888,6 +925,78 @@ class _PatientDashboardState extends State<PatientDashboard> {
           Icon(icon, size: 20, color: Colors.green),
           const SizedBox(width: 10),
           Text(text, style: const TextStyle(fontSize: 14)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSubscriptionBanner(String currentStatus) {
+    if (currentStatus != 'free')
+      return const SizedBox.shrink(); // No mostrar si ya paga
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.blue.shade800, Colors.blue.shade500],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.blue.withOpacity(0.3),
+            blurRadius: 10,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.history_toggle_off_rounded,
+            color: Colors.white,
+            size: 30,
+          ),
+          const SizedBox(width: 15),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: const [
+                Text(
+                  "Modo Gratuito (3 días)",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+                Text(
+                  "Tus registros anteriores están ocultos. ¡Asegura tu historial!",
+                  style: TextStyle(color: Colors.white70, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: () =>
+                _showPremiumModal(context), // Reutilizamos tu modal de pago
+            style: TextButton.styleFrom(
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            child: const Text(
+              "SUBIR",
+              style: TextStyle(
+                color: Colors.blue,
+                fontWeight: FontWeight.bold,
+                fontSize: 12,
+              ),
+            ),
+          ),
         ],
       ),
     );

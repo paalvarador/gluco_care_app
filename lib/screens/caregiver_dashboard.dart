@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:gluco_care_app/models/plan_config.dart';
 import 'package:gluco_care_app/screens/welcome_screen.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
@@ -32,12 +33,14 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
           .doc(currentUser?.uid)
           .snapshots(),
       builder: (context, userSnapshot) {
-        if (!userSnapshot.hasData)
+        if (!userSnapshot.hasData) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
           );
+        }
 
         final userData = userSnapshot.data?.data() as Map<String, dynamic>?;
+
         final String? linkedId = userData?['linkedPatientId'];
         final String? linkedName = userData?['linkedPatientName'] ?? "Familiar";
 
@@ -50,16 +53,21 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
               .doc(linkedId)
               .snapshots(),
           builder: (context, patientProfileSnapshot) {
-            if (!patientProfileSnapshot.hasData)
+            if (!patientProfileSnapshot.hasData) {
               return const Scaffold(
                 body: Center(child: CircularProgressIndicator()),
               );
+            }
 
             final patientProfile =
                 patientProfileSnapshot.data!.data() as Map<String, dynamic>;
+
+            final patientPlan = PlanConfig.getSettings(patientProfile['subscription_status'] ?? 'free');
+            DateTime patientCutOffDate = DateTime.now().subtract(Duration(days: patientPlan.historyDays));
+            Timestamp patientCutOffTimestamp = Timestamp.fromDate(patientCutOffDate);
+
             // El cuidador es "Premium" si su PACIENTE es Premium
-            final bool isPremiumAccess =
-                patientProfile['subscription_status'] == 'premium';
+            final bool isPremiumAccess = patientProfile['subscription_status'] == 'premium';
 
             return Scaffold(
               backgroundColor: const Color(0xFFF8F9FE),
@@ -67,7 +75,7 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
               body: _buildPatientDataStream(
                 linkedId,
                 isPremiumAccess,
-                limit48h,
+                patientCutOffTimestamp,
                 linkedName,
               ),
             );
@@ -81,23 +89,28 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
   Widget _buildPatientDataStream(
     String linkedId,
     bool isPremium,
-    DateTime limit,
+    Timestamp cutOff,
     String? name,
   ) {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection('glucose_logs')
           .where('user_id', isEqualTo: linkedId)
+          .where('created_at', isGreaterThanOrEqualTo: cutOff)
+          .orderBy('created_at', descending: true)
           .snapshots(),
       builder: (context, glucSnapshot) {
         return StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance
               .collection('blood_pressure_logs')
               .where('user_id', isEqualTo: linkedId)
+              .where('created_at', isGreaterThanOrEqualTo: cutOff)
+              .orderBy('created_at', descending: true)
               .snapshots(),
           builder: (context, pressSnapshot) {
-            if (!glucSnapshot.hasData || !pressSnapshot.hasData)
+            if (!glucSnapshot.hasData || !pressSnapshot.hasData) {
               return const Center(child: CircularProgressIndicator());
+            }
 
             // Combinar registros
             List<Map<String, dynamic>> allLogs = [];
@@ -113,15 +126,7 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
             }
 
             // Aplicar filtro de 48 horas si no es Premium
-            List<Map<String, dynamic>> visibleLogs = isPremium
-                ? allLogs
-                : allLogs
-                      .where(
-                        (l) => (l['created_at'] as Timestamp).toDate().isAfter(
-                          limit,
-                        ),
-                      )
-                      .toList();
+            List<Map<String, dynamic>> visibleLogs = List.from(allLogs);
 
             visibleLogs.sort(
               (a, b) => (b['created_at'] as Timestamp).compareTo(
