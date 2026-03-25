@@ -6,11 +6,7 @@ class HealthChart extends StatelessWidget {
   final List<Map<String, dynamic>> allLogs;
   final bool isPremium;
 
-  const HealthChart({
-    super.key, 
-    required this.allLogs, 
-    this.isPremium = false
-  });
+  const HealthChart({super.key, required this.allLogs, this.isPremium = false});
 
   @override
   Widget build(BuildContext context) {
@@ -22,20 +18,24 @@ class HealthChart extends StatelessWidget {
     for (int i = 0; i < reversedLogs.length; i++) {
       final log = reversedLogs[i];
       if (log['type'] == 'glucose') {
-        glucoseSpots.add(FlSpot(i.toDouble(), (log['value'] as num).toDouble()));
+        glucoseSpots.add(
+          FlSpot(i.toDouble(), (log['value'] as num).toDouble()),
+        );
       } else if (log['type'] == 'pressure') {
-        pressureSpots.add(FlSpot(i.toDouble(), (log['systolic'] as num).toDouble()));
+        pressureSpots.add(
+          FlSpot(i.toDouble(), (log['systolic'] as num).toDouble()),
+        );
       }
     }
 
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.03),
+            color: Colors.black.withValues(alpha: 0.03),
             blurRadius: 10,
             offset: const Offset(0, 5),
           ),
@@ -49,7 +49,11 @@ class HealthChart extends StatelessWidget {
             children: [
               Text(
                 isPremium ? "Tendencia Completa" : "Tendencia (Reciente)",
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
               ),
               const Icon(Icons.show_chart, color: Colors.grey, size: 20),
             ],
@@ -62,10 +66,18 @@ class HealthChart extends StatelessWidget {
                 lineTouchData: LineTouchData(
                   touchTooltipData: LineTouchTooltipData(
                     getTooltipColor: (spot) => const Color(0xFF1E2746),
-                    getTooltipItems: (spots) => spots.map((s) => LineTooltipItem(
-                      "${s.barIndex == 0 ? 'Gluco' : 'Pres'}: ${s.y.toInt()}",
-                      const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                    )).toList(),
+                    getTooltipItems: (spots) => spots
+                        .map(
+                          (s) => LineTooltipItem(
+                            "${s.barIndex == 0 ? 'Gluco' : 'Pres'}: ${s.y.toInt()}",
+                            const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        )
+                        .toList(),
                   ),
                 ),
                 gridData: const FlGridData(show: false),
@@ -79,7 +91,10 @@ class HealthChart extends StatelessWidget {
                       color: Colors.blue,
                       barWidth: 4,
                       dotData: const FlDotData(show: false),
-                      belowBarData: BarAreaData(show: true, color: Colors.blue.withOpacity(0.05)),
+                      belowBarData: BarAreaData(
+                        show: true,
+                        color: Colors.blue.withOpacity(0.05),
+                      ),
                     ),
                   if (pressureSpots.isNotEmpty)
                     LineChartBarData(
@@ -88,7 +103,10 @@ class HealthChart extends StatelessWidget {
                       color: Colors.redAccent,
                       barWidth: 4,
                       dotData: const FlDotData(show: false),
-                      belowBarData: BarAreaData(show: true, color: Colors.redAccent.withOpacity(0.05)),
+                      belowBarData: BarAreaData(
+                        show: true,
+                        color: Colors.redAccent.withOpacity(0.05),
+                      ),
                     ),
                 ],
               ),

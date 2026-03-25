@@ -64,6 +64,8 @@ class _PatientDashboardState extends State<PatientDashboard> {
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
 
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+
     if (user == null) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
@@ -93,28 +95,32 @@ class _PatientDashboardState extends State<PatientDashboard> {
         final bool isPremium = userData?['subscription_status'] == 'premium';
 
         return Scaffold(
-          backgroundColor: const Color(
-            0xFFF8F9FE,
-          ), // Color de fondo moderno (off-white azulado)
+          backgroundColor: isDark
+              ? const Color(0xFF121212)
+              : const Color(0xFFF0F2F8),
           appBar: AppBar(
             elevation: 0,
             backgroundColor: Colors.transparent,
-            foregroundColor: Colors.black,
+            foregroundColor: isDark ? Colors.white : Colors.black,
             centerTitle: false,
             title: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   "Hola, ${userData?['full_name']?.split(' ')[0] ?? 'Paciente'}",
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 19,
-                    color: Colors.blueAccent,
+                    color: isDark ? Colors.blueAccent : Colors.blue.shade700,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                const Text(
+                Text(
                   "Tu Resumen de Salud",
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : Colors.black,
+                  ),
                 ),
               ],
             ),
@@ -137,6 +143,7 @@ class _PatientDashboardState extends State<PatientDashboard> {
               IconButton(
                 icon: const Icon(Icons.logout_rounded),
                 onPressed: () => FirebaseAuth.instance.signOut(),
+                color: Colors.blue,
               ),
             ],
           ),
@@ -205,7 +212,7 @@ class _PatientDashboardState extends State<PatientDashboard> {
                           _buildSubscriptionBanner(
                             userData?['subscription_status'] ?? 'free',
                           ),
-                          _buildQuickSummary(allLogs),
+                          _buildQuickSummary(allLogs, isDark),
                           const SizedBox(height: 30),
                           HealthChart(allLogs: allLogs, isPremium: isPremium),
                           const SizedBox(height: 30),
@@ -244,7 +251,7 @@ class _PatientDashboardState extends State<PatientDashboard> {
     );
   }
 
-  Widget _buildQuickSummary(List<Map<String, dynamic>> logs) {
+  Widget _buildQuickSummary(List<Map<String, dynamic>> logs, bool isDark) {
     final lastGluc = logs.firstWhere(
       (l) => l['type'] == 'glucose',
       orElse: () => {},
@@ -262,6 +269,7 @@ class _PatientDashboardState extends State<PatientDashboard> {
           "mg/dL",
           Icons.water_drop,
           Colors.blue,
+          isDark
         ),
         const SizedBox(width: 15),
         _summaryCard(
@@ -272,6 +280,7 @@ class _PatientDashboardState extends State<PatientDashboard> {
           "mmHg",
           Icons.favorite,
           Colors.redAccent,
+          isDark
         ),
       ],
     );
@@ -283,16 +292,17 @@ class _PatientDashboardState extends State<PatientDashboard> {
     String unit,
     IconData icon,
     Color color,
+    bool isDark,
   ) {
     return Expanded(
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: Theme.of(context).cardColor,
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.03),
+              color: Colors.black.withOpacity(isDark ? 0.2 : 0.08),
               blurRadius: 10,
               offset: const Offset(0, 5),
             ),
@@ -304,7 +314,7 @@ class _PatientDashboardState extends State<PatientDashboard> {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
+                color: color.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
               child: Icon(icon, color: color, size: 18),
@@ -317,50 +327,13 @@ class _PatientDashboardState extends State<PatientDashboard> {
             Text(
               "$title ($unit)",
               style: TextStyle(
-                color: Colors.grey.shade500,
+                color: Theme.of(context).colorScheme.onSurface,
                 fontSize: 12,
                 fontWeight: FontWeight.w500,
               ),
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildChartSection(List<Map<String, dynamic>> logs, bool isPremium) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                isPremium ? "Tendencia Semanal" : "Tendencia (24h)",
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
-              ),
-              const Icon(Icons.show_chart, color: Colors.grey, size: 20),
-            ],
-          ),
-          const SizedBox(height: 20),
-          SizedBox(height: 180, child: _buildChart(logs)),
-        ],
       ),
     );
   }
@@ -373,9 +346,13 @@ class _PatientDashboardState extends State<PatientDashboard> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        const Text(
+        Text(
           "Historial Médico",
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Theme.of(context).colorScheme.onSurface,
+          ),
         ),
         TextButton(
           onPressed: () => _generatePdfReport(
@@ -384,13 +361,13 @@ class _PatientDashboardState extends State<PatientDashboard> {
             isPremium,
           ),
           style: TextButton.styleFrom(
-            backgroundColor: Colors.white,
+            backgroundColor: Theme.of(context).cardColor,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
             ),
           ),
           child: Row(
-            children: const [
+            children: [
               Icon(
                 Icons.picture_as_pdf_rounded,
                 color: Colors.redAccent,
@@ -400,7 +377,7 @@ class _PatientDashboardState extends State<PatientDashboard> {
               Text(
                 "PDF",
                 style: TextStyle(
-                  color: Colors.black,
+                  color: Theme.of(context).colorScheme.onSurface,
                   fontWeight: FontWeight.bold,
                   fontSize: 12,
                 ),
@@ -421,10 +398,12 @@ class _PatientDashboardState extends State<PatientDashboard> {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: isHigh ? Colors.red.withOpacity(0.2) : Colors.transparent,
+          color: isHigh
+              ? Colors.red.withValues(alpha: 0.2)
+              : Colors.transparent,
         ),
       ),
       child: Row(
@@ -432,7 +411,7 @@ class _PatientDashboardState extends State<PatientDashboard> {
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: (isGluc ? Colors.blue : Colors.red).withOpacity(0.1),
+              color: (isGluc ? Colors.blue : Colors.red).withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(15),
             ),
             child: Icon(
@@ -466,7 +445,7 @@ class _PatientDashboardState extends State<PatientDashboard> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: Colors.red.withOpacity(0.1),
+                color: Colors.red.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: const Text(
@@ -483,76 +462,6 @@ class _PatientDashboardState extends State<PatientDashboard> {
     );
   }
 
-  Widget _buildChart(List<Map<String, dynamic>> allLogs) {
-    final reversedLogs = allLogs.reversed.toList();
-    List<FlSpot> glucoseSpots = [];
-    List<FlSpot> pressureSpots = [];
-
-    for (int i = 0; i < reversedLogs.length; i++) {
-      final log = reversedLogs[i];
-      if (log['type'] == 'glucose') {
-        glucoseSpots.add(
-          FlSpot(i.toDouble(), (log['value'] as num).toDouble()),
-        );
-      } else if (log['type'] == 'pressure')
-        // ignore: curly_braces_in_flow_control_structures
-        pressureSpots.add(
-          FlSpot(i.toDouble(), (log['systolic'] as num).toDouble()),
-        );
-    }
-
-    return LineChart(
-      LineChartData(
-        lineTouchData: LineTouchData(
-          touchTooltipData: LineTouchTooltipData(
-            getTooltipColor: (spot) => const Color(0xFF1E2746),
-            getTooltipItems: (spots) => spots
-                .map(
-                  (s) => LineTooltipItem(
-                    "${s.barIndex == 0 ? 'Gluco' : 'Pres'}: ${s.y.toInt()}",
-                    const TextStyle(
-                      color: Colors.white,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                )
-                .toList(),
-          ),
-        ),
-        gridData: const FlGridData(show: false),
-        titlesData: const FlTitlesData(show: false),
-        borderData: FlBorderData(show: false),
-        lineBarsData: [
-          if (glucoseSpots.isNotEmpty)
-            LineChartBarData(
-              spots: glucoseSpots,
-              isCurved: true,
-              color: Colors.blue,
-              barWidth: 4,
-              dotData: const FlDotData(show: false),
-              belowBarData: BarAreaData(
-                show: true,
-                color: Colors.blue.withOpacity(0.05),
-              ),
-            ),
-          if (pressureSpots.isNotEmpty)
-            LineChartBarData(
-              spots: pressureSpots,
-              isCurved: true,
-              color: Colors.redAccent,
-              barWidth: 4,
-              dotData: const FlDotData(show: false),
-              belowBarData: BarAreaData(
-                show: true,
-                color: Colors.redAccent.withOpacity(0.05),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
   // --- MÉTODOS DE APOYO (Mantener igual que antes) ---
   void _showAddEntry(BuildContext context) {
     showModalBottomSheet(
@@ -561,8 +470,8 @@ class _PatientDashboardState extends State<PatientDashboard> {
       backgroundColor: Colors
           .transparent, // Para que el modal se vea moderno con bordes redondeados
       builder: (context) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
           borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
         ),
         child: const AddEntryModal(),
@@ -608,7 +517,9 @@ class _PatientDashboardState extends State<PatientDashboard> {
   }
 
   Future<void> _startPurchaseFlow(String planType) async {
-    debugPrint("Ingreso a la funcion _startPurchaseFlow con el planType: $planType");
+    debugPrint(
+      "Ingreso a la funcion _startPurchaseFlow con el planType: $planType",
+    );
     setState(() {
       _isLoading = true;
     });
@@ -903,8 +814,8 @@ class _PatientDashboardState extends State<PatientDashboard> {
       ),
       builder: (context) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 30),
-        decoration: const BoxDecoration(
-          color: Colors.white,
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
           borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
         ),
         child: SingleChildScrollView(
@@ -996,7 +907,9 @@ class _PatientDashboardState extends State<PatientDashboard> {
         margin: const EdgeInsets.only(bottom: 15),
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: isBestSeller ? color.withOpacity(0.05) : Colors.white,
+          color: isBestSeller
+              ? color.withValues(alpha: 0.05)
+              : Theme.of(context).cardColor,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: isBestSeller ? color : Colors.grey.shade200,
@@ -1031,10 +944,10 @@ class _PatientDashboardState extends State<PatientDashboard> {
                             color: color,
                             borderRadius: BorderRadius.circular(10),
                           ),
-                          child: const Text(
+                          child: Text(
                             "RECOMENDADO",
                             style: TextStyle(
-                              color: Colors.white,
+                              color: Theme.of(context).cardColor,
                               fontSize: 9,
                               fontWeight: FontWeight.bold,
                             ),
@@ -1063,22 +976,10 @@ class _PatientDashboardState extends State<PatientDashboard> {
     );
   }
 
-  Widget _buildFeatureRow(IconData icon, String text) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(
-        children: [
-          Icon(icon, size: 20, color: Colors.green),
-          const SizedBox(width: 10),
-          Text(text, style: const TextStyle(fontSize: 14)),
-        ],
-      ),
-    );
-  }
-
   Widget _buildSubscriptionBanner(String currentStatus) {
-    if (currentStatus != 'free')
+    if (currentStatus != 'free') {
       return const SizedBox.shrink(); // No mostrar si ya paga
+    }
 
     return Container(
       margin: const EdgeInsets.only(bottom: 20),
@@ -1092,7 +993,7 @@ class _PatientDashboardState extends State<PatientDashboard> {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.blue.withOpacity(0.3),
+            color: Colors.blue.withValues(alpha: 0.3),
             blurRadius: 10,
             offset: const Offset(0, 5),
           ),
@@ -1100,27 +1001,26 @@ class _PatientDashboardState extends State<PatientDashboard> {
       ),
       child: Row(
         children: [
-          const Icon(
-            Icons.history_toggle_off_rounded,
-            color: Colors.white,
-            size: 30,
-          ),
+          Icon(Icons.history_toggle_off_rounded, color: Colors.white, size: 30),
           const SizedBox(width: 15),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
+              children: [
                 Text(
                   "Modo Gratuito (3 días)",
                   style: TextStyle(
-                    color: Colors.white,
+                    color: Theme.of(context).cardColor,
                     fontWeight: FontWeight.bold,
                     fontSize: 14,
                   ),
                 ),
                 Text(
                   "Tus registros anteriores están ocultos. ¡Asegura tu historial!",
-                  style: TextStyle(color: Colors.white70, fontSize: 12),
+                  style: TextStyle(
+                    color: Theme.of(context).cardColor,
+                    fontSize: 12,
+                  ),
                 ),
               ],
             ),
@@ -1129,7 +1029,7 @@ class _PatientDashboardState extends State<PatientDashboard> {
             onPressed: () =>
                 _showPremiumModal(context), // Reutilizamos tu modal de pago
             style: TextButton.styleFrom(
-              backgroundColor: Colors.white,
+              backgroundColor: Theme.of(context).cardColor,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10),
               ),

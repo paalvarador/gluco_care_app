@@ -6,6 +6,8 @@ class WelcomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
       body: Stack(
         children: [
@@ -15,7 +17,9 @@ class WelcomeScreen extends StatelessWidget {
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [Colors.blue.shade800, Colors.blue.shade400],
+                colors: isDark
+                    ? [const Color(0xFF1E2746), const Color(0xFF0D121F)]
+                    : [Colors.blue.shade800, Colors.blue.shade400],
               ),
             ),
           ),
@@ -28,14 +32,22 @@ class WelcomeScreen extends StatelessWidget {
                   // Icono o Logo con sombra
                   Container(
                     padding: const EdgeInsets.all(20),
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF1E2746) : Colors.white,
                       shape: BoxShape.circle,
                       boxShadow: [
-                        BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, 5))
+                        BoxShadow(
+                          color: isDark ? Colors.black54 : Colors.black26,
+                          blurRadius: 10,
+                          offset: const Offset(0, 5),
+                        ),
                       ],
                     ),
-                    child: const Icon(Icons.water_drop, size: 80, color: Colors.redAccent),
+                    child: const Icon(
+                      Icons.water_drop,
+                      size: 80,
+                      color: Colors.redAccent,
+                    ),
                   ),
                   const SizedBox(height: 30),
                   const Text(
@@ -48,12 +60,12 @@ class WelcomeScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 15),
-                  const Text(
+                  Text(
                     "Control de glucosa inteligente para ti y tu familia.",
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 18,
-                      color: Colors.white70,
+                      color: isDark ? Colors.white70 : Colors.white,
                       fontWeight: FontWeight.w400,
                     ),
                   ),
@@ -62,11 +74,17 @@ class WelcomeScreen extends StatelessWidget {
                   ElevatedButton(
                     onPressed: () => Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => const LoginScreen()),
+                      MaterialPageRoute(
+                        builder: (context) => const LoginScreen(),
+                      ),
                     ),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: Colors.blue.shade800,
+                      backgroundColor: isDark
+                          ? Colors.blueAccent
+                          : Colors.white,
+                      foregroundColor: isDark
+                          ? Colors.white
+                          : Colors.blue.shade800,
                       minimumSize: const Size(double.infinity, 60),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(15),
@@ -75,7 +93,10 @@ class WelcomeScreen extends StatelessWidget {
                     ),
                     child: const Text(
                       "COMENZAR",
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 20),

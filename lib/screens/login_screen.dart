@@ -69,8 +69,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
-      backgroundColor: Colors.blue.shade50,
+      backgroundColor: isDark ? Theme.of(context).scaffoldBackgroundColor : Colors.blue.shade50,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -86,12 +88,12 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   "Hola de nuevo 👋",
                   style: TextStyle(
                     fontSize: 32,
                     fontWeight: FontWeight.bold,
-                    color: Colors.blue,
+                    color: isDark ? Colors.blueAccent : Colors.blue,
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -112,7 +114,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       borderRadius: BorderRadius.circular(15),
                     ),
                     filled: true,
-                    fillColor: Colors.white,
+                    fillColor: Theme.of(context).cardColor,
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -138,7 +140,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       borderRadius: BorderRadius.circular(15),
                     ),
                     filled: true,
-                    fillColor: Colors.white,
+                    fillColor: Theme.of(context).cardColor,
                   ),
                 ),
                 const SizedBox(height: 30),
@@ -178,7 +180,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   label: const Text("Google"),
                   style: OutlinedButton.styleFrom(
-                    backgroundColor: Colors.white,
+                    backgroundColor: Theme.of(context).cardColor,
                     minimumSize: const Size(double.infinity, 55),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(15),
@@ -198,14 +200,14 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                     child: RichText(
-                      text: const TextSpan(
+                      text: TextSpan(
                         text: "¿No tienes cuenta? ",
                         style: TextStyle(color: Colors.grey),
                         children: [
                           TextSpan(
                             text: "Crea una aquí",
                             style: TextStyle(
-                              color: Colors.blue,
+                              color: isDark ? Colors.blueAccent : Colors.blue,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
@@ -222,7 +224,7 @@ class _LoginScreenState extends State<LoginScreen> {
           // Pantalla de carga (Overlay)
           if (_isLoading)
             Container(
-              color: Colors.black26,
+              color: Colors.black45,
               child: const Center(child: CircularProgressIndicator()),
             ),
         ],
