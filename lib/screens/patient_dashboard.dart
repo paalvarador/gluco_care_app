@@ -6,6 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:gluco_care_app/models/plan_config.dart';
+import 'package:gluco_care_app/widgets/health_charts.dart';
 import 'package:intl/intl.dart';
 import 'add_entry_modal.dart';
 import 'welcome_screen.dart';
@@ -206,7 +207,7 @@ class _PatientDashboardState extends State<PatientDashboard> {
                           ),
                           _buildQuickSummary(allLogs),
                           const SizedBox(height: 30),
-                          _buildChartSection(allLogs, isPremium),
+                          HealthChart(allLogs: allLogs, isPremium: isPremium),
                           const SizedBox(height: 30),
                           _buildHistoryHeader(allLogs, user, isPremium),
                           const SizedBox(height: 10),

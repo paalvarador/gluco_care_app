@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:gluco_care_app/models/plan_config.dart';
 import 'package:gluco_care_app/screens/welcome_screen.dart';
+import 'package:gluco_care_app/widgets/health_charts.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -149,7 +150,7 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
                 children: [
                   _buildQuickSummary(visibleLogs),
                   const SizedBox(height: 30),
-                  _buildChartSection(visibleLogs, isPremium),
+                  HealthChart(allLogs: allLogs, isPremium: isPremium),
                   const SizedBox(height: 30),
                   _buildHistoryHeader(visibleLogs, name, isPremium, isPremium),
                   const SizedBox(height: 15),
