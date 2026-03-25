@@ -14,7 +14,6 @@ class InitialDashboard extends StatefulWidget {
 class _InitialDashboardState extends State<InitialDashboard> {
   bool _isSaving = false;
 
-  // Función para guardar el rol en Firestore
   Future<void> _selectRole(String role) async {
     setState(() => _isSaving = true);
     try {
@@ -25,8 +24,9 @@ class _InitialDashboardState extends State<InitialDashboard> {
           'full_name': user.displayName ?? 'Usuario',
           'email': user.email,
           'role': role,
-          'subscription_status': 'free', // Iniciamos con el plan gratis
+          'subscription_status': 'free',
           'created_at': FieldValue.serverTimestamp(),
+          'caregivers_count': 0, // Inicializamos para evitar nulos
         }, SetOptions(merge: true));
 
         if (!mounted) return;
@@ -42,9 +42,12 @@ class _InitialDashboardState extends State<InitialDashboard> {
         );
       }
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("Error al guardar: $e")));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Error al guardar: $e"),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -53,54 +56,74 @@ class _InitialDashboardState extends State<InitialDashboard> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(
+        0xFFF8F9FE,
+      ), // El mismo fondo de tus Dashboards
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 30),
+          padding: const EdgeInsets.all(30),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
+              const SizedBox(height: 40),
+              // Icono de la App o un elemento visual de salud
+              Container(
+                padding: const EdgeInsets.all(15),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.health_and_safety_rounded,
+                  color: Colors.blue,
+                  size: 40,
+                ),
+              ),
+              const SizedBox(height: 20),
               const Text(
                 "¡Casi listo!",
                 style: TextStyle(
                   fontSize: 32,
                   fontWeight: FontWeight.bold,
-                  color: Colors.blue,
+                  color: Color(0xFF1E2746),
                 ),
               ),
               const SizedBox(height: 10),
               const Text(
-                "¿Cómo planeas usar Gluco Care?",
+                "Personaliza tu experiencia en Gluco Care.\n¿Cómo usarás la plataforma?",
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 18, color: Colors.grey),
+                style: TextStyle(fontSize: 16, color: Colors.grey, height: 1.5),
               ),
-              const SizedBox(height: 40),
+              const Spacer(),
 
               if (_isSaving)
-                const CircularProgressIndicator()
+                const CircularProgressIndicator(color: Colors.blue)
               else ...[
-                // Opción: PACIENTE
                 _buildRoleCard(
                   title: "Soy Paciente",
                   description:
-                      "Quiero registrar mi glucosa y ver mis tendencias.",
-                  icon: Icons.person_search_outlined,
+                      "Registra glucosa, presión y genera reportes para tu doctor.",
+                  icon: Icons.person_search_rounded,
                   color: Colors.blue.shade700,
                   onTap: () => _selectRole('patient'),
                 ),
-
                 const SizedBox(height: 20),
-
-                // Opción: CUIDADOR
                 _buildRoleCard(
                   title: "Soy Cuidador",
                   description:
-                      "Quiero supervisar las mediciones de mis seres queridos.",
-                  icon: Icons.family_restroom_outlined,
-                  color: Colors.teal.shade600,
+                      "Monitorea la salud de tus familiares en tiempo real.",
+                  icon: Icons.family_restroom_rounded,
+                  color: const Color(
+                    0xFF1E2746,
+                  ), // Color oscuro para contraste Pro
                   onTap: () => _selectRole('caregiver'),
                 ),
               ],
+              const Spacer(),
+              const Text(
+                "Puedes cambiar de rol más adelante en ajustes.",
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+              const SizedBox(height: 10),
             ],
           ),
         ),
@@ -115,28 +138,35 @@ class _InitialDashboardState extends State<InitialDashboard> {
     required Color color,
     required VoidCallback onTap,
   }) {
-    return GestureDetector(
+    return InkWell(
       onTap: onTap,
+      borderRadius: BorderRadius.circular(24),
       child: Container(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: color.withOpacity(0.3), width: 2),
+          borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(
-              color: color.withOpacity(0.1),
-              blurRadius: 10,
-              offset: const Offset(0, 5),
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 15,
+              offset: const Offset(0, 8),
             ),
           ],
+          border: Border.all(
+            color: Colors.white,
+            width: 2,
+          ), // Borde interno sutil
         ),
         child: Row(
           children: [
-            CircleAvatar(
-              radius: 30,
-              backgroundColor: color.withOpacity(0.1),
-              child: Icon(icon, color: color, size: 30),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Icon(icon, color: color, size: 32),
             ),
             const SizedBox(width: 20),
             Expanded(
@@ -145,21 +175,25 @@ class _InitialDashboardState extends State<InitialDashboard> {
                 children: [
                   Text(
                     title,
-                    style: TextStyle(
-                      fontSize: 20,
+                    style: const TextStyle(
+                      fontSize: 18,
                       fontWeight: FontWeight.bold,
-                      color: color,
+                      color: Color(0xFF1E2746),
                     ),
                   ),
-                  const SizedBox(height: 5),
+                  const SizedBox(height: 4),
                   Text(
                     description,
-                    style: const TextStyle(fontSize: 14, color: Colors.grey),
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.grey.shade600,
+                      height: 1.3,
+                    ),
                   ),
                 ],
               ),
             ),
-            Icon(Icons.arrow_forward_ios, color: color, size: 16),
+            Icon(Icons.chevron_right_rounded, color: Colors.grey.shade400),
           ],
         ),
       ),

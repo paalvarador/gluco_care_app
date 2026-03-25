@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -62,12 +63,19 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
             final patientProfile =
                 patientProfileSnapshot.data!.data() as Map<String, dynamic>;
 
-            final patientPlan = PlanConfig.getSettings(patientProfile['subscription_status'] ?? 'free');
-            DateTime patientCutOffDate = DateTime.now().subtract(Duration(days: patientPlan.historyDays));
-            Timestamp patientCutOffTimestamp = Timestamp.fromDate(patientCutOffDate);
+            final patientPlan = PlanConfig.getSettings(
+              patientProfile['subscription_status'] ?? 'free',
+            );
+            DateTime patientCutOffDate = DateTime.now().subtract(
+              Duration(days: patientPlan.historyDays),
+            );
+            Timestamp patientCutOffTimestamp = Timestamp.fromDate(
+              patientCutOffDate,
+            );
 
             // El cuidador es "Premium" si su PACIENTE es Premium
-            final bool isPremiumAccess = patientProfile['subscription_status'] == 'premium';
+            final bool isPremiumAccess =
+                patientProfile['subscription_status'] == 'premium';
 
             return Scaffold(
               backgroundColor: const Color(0xFFF8F9FE),
@@ -141,7 +149,9 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
                 children: [
                   _buildQuickSummary(visibleLogs),
                   const SizedBox(height: 30),
-                  _buildHistoryHeader(visibleLogs, name, isPremium),
+                  _buildChartSection(visibleLogs, isPremium),
+                  const SizedBox(height: 30),
+                  _buildHistoryHeader(visibleLogs, name, isPremium, isPremium),
                   const SizedBox(height: 15),
                   ListView.builder(
                     shrinkWrap: true,
@@ -297,20 +307,25 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
     List<Map<String, dynamic>> logs,
     String? name,
     bool isPremium,
+    bool canExportPDF,
   ) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(
-          isPremium ? "Historial Completo" : "Historial (48h)",
+          isPremium ? "Historial Completo" : "Historial Limitado",
           style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
-        TextButton.icon(
-          onPressed: () =>
-              _generatePdfReport(logs, name ?? "Paciente", isPremium),
-          icon: const Icon(Icons.picture_as_pdf, size: 18, color: Colors.red),
-          label: const Text("PDF", style: TextStyle(color: Colors.red)),
-        ),
+        if (canExportPDF)
+          TextButton.icon(
+            onPressed: () =>
+                _generatePdfReport(logs, name ?? "Paciente", isPremium),
+            icon: const Icon(Icons.picture_as_pdf, size: 18, color: Colors.red),
+            label: const Text("PDF", style: TextStyle(color: Colors.red)),
+          )
+        else
+          // Opcional: Mostrar un candado para incitar al upgrade
+          const Icon(Icons.lock_outline, size: 18, color: Colors.grey),
       ],
     );
   }
@@ -558,6 +573,114 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildChartSection(List<Map<String, dynamic>> logs, bool isPremium) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                isPremium ? "Tendencia Semanal" : "Tendencia (Reciente)",
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+              const Icon(Icons.show_chart, color: Colors.grey, size: 20),
+            ],
+          ),
+          const SizedBox(height: 20),
+          // Aquí llamarías a tu función _buildChart(logs)
+          SizedBox(height: 180, child: _buildChart(logs)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChart(List<Map<String, dynamic>> allLogs) {
+    final reversedLogs = allLogs.reversed.toList();
+    List<FlSpot> glucoseSpots = [];
+    List<FlSpot> pressureSpots = [];
+
+    for (int i = 0; i < reversedLogs.length; i++) {
+      final log = reversedLogs[i];
+      if (log['type'] == 'glucose') {
+        glucoseSpots.add(
+          FlSpot(i.toDouble(), (log['value'] as num).toDouble()),
+        );
+      } else if (log['type'] == 'pressure')
+        // ignore: curly_braces_in_flow_control_structures
+        pressureSpots.add(
+          FlSpot(i.toDouble(), (log['systolic'] as num).toDouble()),
+        );
+    }
+
+    return LineChart(
+      LineChartData(
+        lineTouchData: LineTouchData(
+          touchTooltipData: LineTouchTooltipData(
+            getTooltipColor: (spot) => const Color(0xFF1E2746),
+            getTooltipItems: (spots) => spots
+                .map(
+                  (s) => LineTooltipItem(
+                    "${s.barIndex == 0 ? 'Gluco' : 'Pres'}: ${s.y.toInt()}",
+                    const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                )
+                .toList(),
+          ),
+        ),
+        gridData: const FlGridData(show: false),
+        titlesData: const FlTitlesData(show: false),
+        borderData: FlBorderData(show: false),
+        lineBarsData: [
+          if (glucoseSpots.isNotEmpty)
+            LineChartBarData(
+              spots: glucoseSpots,
+              isCurved: true,
+              color: Colors.blue,
+              barWidth: 4,
+              dotData: const FlDotData(show: false),
+              belowBarData: BarAreaData(
+                show: true,
+                color: Colors.blue.withOpacity(0.05),
+              ),
+            ),
+          if (pressureSpots.isNotEmpty)
+            LineChartBarData(
+              spots: pressureSpots,
+              isCurved: true,
+              color: Colors.redAccent,
+              barWidth: 4,
+              dotData: const FlDotData(show: false),
+              belowBarData: BarAreaData(
+                show: true,
+                color: Colors.redAccent.withOpacity(0.05),
+              ),
+            ),
+        ],
       ),
     );
   }

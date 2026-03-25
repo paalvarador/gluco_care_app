@@ -201,7 +201,9 @@ class _PatientDashboardState extends State<PatientDashboard> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const SizedBox(height: 20),
-                          _buildSubscriptionBanner(userData?['subscription_status'] ?? 'free'),
+                          _buildSubscriptionBanner(
+                            userData?['subscription_status'] ?? 'free',
+                          ),
                           _buildQuickSummary(allLogs),
                           const SizedBox(height: 30),
                           _buildChartSection(allLogs, isPremium),
@@ -592,7 +594,7 @@ class _PatientDashboardState extends State<PatientDashboard> {
         } else if (purchaseDetails.status == PurchaseStatus.purchased ||
             purchaseDetails.status == PurchaseStatus.restored) {
           // ¡ÉXITO! Actualizamos Firestore
-          await _updateUserToPremium();
+          await _updateUserSubscription(purchaseDetails.productID);
           _showSnackBar("¡Felicidades! Ya eres Premium.");
         }
 
@@ -604,7 +606,8 @@ class _PatientDashboardState extends State<PatientDashboard> {
     });
   }
 
-  Future<void> _startPurchaseFlow() async {
+  Future<void> _startPurchaseFlow(String planType) async {
+    debugPrint("Ingreso a la funcion _startPurchaseFlow con el planType: $planType");
     setState(() {
       _isLoading = true;
     });
@@ -617,8 +620,23 @@ class _PatientDashboardState extends State<PatientDashboard> {
       return;
     }
 
+    String productId;
+    switch (planType) {
+      case 'basic':
+        productId = 'glucocare_basic_new';
+        break;
+      case 'ideal':
+        productId = 'glucocare_ideal_new';
+        break;
+      case 'premium':
+        productId = 'glucocare_premium_new';
+        break;
+      default:
+        productId = 'glucocare_premium_monthly';
+    }
+
     // 2. Definir el ID del producto que creaste en Google Play Console
-    const Set<String> _kIds = {'glucocare_premium_monthly'};
+    final Set<String> _kIds = {productId};
 
     // 3. Cargar los detalles del producto desde los servidores de Google
     final ProductDetailsResponse response = await _inAppPurchase
@@ -643,13 +661,31 @@ class _PatientDashboardState extends State<PatientDashboard> {
     });
   }
 
-  Future<void> _updateUserToPremium() async {
+  Future<void> _updateUserSubscription(String productId) async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).update(
-        {'subscription_status': 'premium'},
-      );
+    if (user == null) return;
+
+    String finalStatus = 'free';
+
+    // Lógica para asignar el plan correcto basado en el ID de Google Play
+    if (productId == 'glucocare_basic_new') {
+      finalStatus = 'basic';
+    } else if (productId == 'glucocare_ideal_new') {
+      finalStatus = 'ideal';
+    } else if (productId == 'glucocare_premium_new') {
+      finalStatus = 'premium';
+    } else if (productId == 'glucocare_premium_monthly') {
+      // ESTE ES EL CASO DE TU MAMÁ: El ID viejo ahora da beneficios Premium
+      finalStatus = 'premium';
     }
+
+    await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+      'subscription_status': finalStatus,
+      'last_purchase_date': FieldValue.serverTimestamp(),
+      'active_product_id': productId,
+    });
+
+    setState(() {}); // Refresca el Dashboard para que el banner desaparezca
   }
 
   Future<void> _generatedLinkingCode() async {
@@ -860,56 +896,165 @@ class _PatientDashboardState extends State<PatientDashboard> {
   void _showPremiumModal(BuildContext context) {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true, // Para que quepa todo el contenido
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
       ),
       builder: (context) => Container(
-        padding: const EdgeInsets.all(30),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 30),
         decoration: const BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.stars, size: 60, color: Colors.amber),
-            const SizedBox(height: 20),
-            const Text(
-              "Plan Premium Gluco Care",
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 15),
-            _buildFeatureRow(Icons.history, "Historial ilimitado (más de 24h)"),
-            _buildFeatureRow(
-              Icons.picture_as_pdf,
-              "Reportes PDF para tu doctor",
-            ),
-            _buildFeatureRow(Icons.share, "Envío completo por WhatsApp"),
-            const SizedBox(height: 30),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 50,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Icon(
+                Icons.verified_user_rounded,
+                size: 50,
+                color: Colors.blue,
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                "Elige tu Plan de Cuidado",
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+              ),
+              const Text(
+                "Protege tu salud y la de tu familia",
+                style: TextStyle(color: Colors.grey),
+              ),
+              const SizedBox(height: 25),
 
-            ElevatedButton(
-              onPressed: () {
-                _startPurchaseFlow();
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue.shade800,
-                minimumSize: const Size(double.infinity, 55),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(15),
-                ),
+              // --- PLAN BÁSICO ---
+              _buildPlanCard(
+                title: "Plan Básico",
+                price: "4.99",
+                description: "30 días de historial • 2 Cuidadores",
+                icon: Icons.person_outline,
+                color: Colors.blueGrey,
+                onTap: () => _startPurchaseFlow('basic'),
               ),
-              child: const Text(
-                "SUSCRIBIRME POR \$4.99 / MES",
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
+
+              // --- PLAN IDEAL (DESTACADO) ---
+              _buildPlanCard(
+                title: "Plan Ideal",
+                price: "9.99",
+                description: "90 días (3 meses) • 3 Cuidadores • PDF Pro",
+                icon: Icons.family_restroom,
+                color: Colors.blue,
+                isBestSeller: true,
+                onTap: () => _startPurchaseFlow('ideal'),
+              ),
+
+              // --- PLAN PREMIUM ---
+              _buildPlanCard(
+                title: "Plan Premium",
+                price: "14.99",
+                description: "Historial Ilimitado • Cuidadores Ilimitados",
+                icon: Icons.all_inclusive,
+                color: const Color(0xFF1E2746),
+                onTap: () => _startPurchaseFlow('premium'),
+              ),
+
+              const SizedBox(height: 20),
+              const Text(
+                "Pagos seguros procesados por Google Play Store",
+                style: TextStyle(fontSize: 11, color: Colors.grey),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Widget auxiliar para las tarjetas de planes
+  Widget _buildPlanCard({
+    required String title,
+    required String price,
+    required String description,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+    bool isBestSeller = false,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 15),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: isBestSeller ? color.withOpacity(0.05) : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isBestSeller ? color : Colors.grey.shade200,
+            width: 2,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: color, size: 30),
+            const SizedBox(width: 15),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      if (isBestSeller)
+                        Container(
+                          margin: const EdgeInsets.only(left: 10),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: color,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Text(
+                            "RECOMENDADO",
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  Text(
+                    description,
+                    style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 10),
-            const Text(
-              "Pago procesado de forma segura por Google Play",
-              style: TextStyle(fontSize: 11, color: Colors.grey),
+            Text(
+              "\$$price",
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
             ),
           ],
         ),
