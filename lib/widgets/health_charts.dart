@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 
 class HealthChart extends StatelessWidget {
   final List<Map<String, dynamic>> allLogs;
@@ -10,7 +9,7 @@ class HealthChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Invertimos los logs para que el tiempo corra de izquierda a derecha
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
     final reversedLogs = allLogs.reversed.toList();
     List<FlSpot> glucoseSpots = [];
     List<FlSpot> pressureSpots = [];
@@ -35,9 +34,9 @@ class HealthChart extends StatelessWidget {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 5),
+            color: Colors.black.withOpacity(isDark ? 0.2 : 0.05),
+            blurRadius: 15,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
@@ -47,20 +46,33 @@ class HealthChart extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                isPremium ? "Tendencia Completa" : "Tendencia (Reciente)",
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                  color: Theme.of(context).colorScheme.onSurface,
-                ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    isPremium ? "Tendencia Completa" : "Tendencia (Reciente)",
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
+                  ),
+                  Text(
+                    "Rango Objetivo: 70 - 130 mg/dL",
+                    style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+                  ),
+                ],
               ),
-              const Icon(Icons.show_chart, color: Colors.grey, size: 20),
+              Icon(
+                Icons.insights_rounded,
+                color: Colors.blue.shade300,
+                size: 24,
+              ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 25),
           SizedBox(
-            height: 180,
+            height: 200, // Un poco más alto para ver mejor los rangos
             child: LineChart(
               LineChartData(
                 lineTouchData: LineTouchData(
@@ -69,10 +81,10 @@ class HealthChart extends StatelessWidget {
                     getTooltipItems: (spots) => spots
                         .map(
                           (s) => LineTooltipItem(
-                            "${s.barIndex == 0 ? 'Gluco' : 'Pres'}: ${s.y.toInt()}",
+                            "${s.barIndex == 0 ? 'Gluc' : 'Pres'}: ${s.y.toInt()}",
                             const TextStyle(
                               color: Colors.white,
-                              fontSize: 10,
+                              fontSize: 11,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
@@ -80,32 +92,137 @@ class HealthChart extends StatelessWidget {
                         .toList(),
                   ),
                 ),
-                gridData: const FlGridData(show: false),
-                titlesData: const FlTitlesData(show: false),
+                // 1. LÍNEAS DE REFERENCIA Y ZONA VERDE
+                extraLinesData: ExtraLinesData(
+                  horizontalLines: [
+                    HorizontalLine(
+                      y: 130,
+                      color: Colors.green.withOpacity(0.5),
+                      strokeWidth: 1,
+                      dashArray: [5, 5],
+                      label: HorizontalLineLabel(
+                        show: true,
+                        alignment: Alignment.topRight,
+                        style: const TextStyle(
+                          fontSize: 9,
+                          color: Colors.green,
+                        ),
+                        labelResolver: (line) => 'Límite Alto',
+                      ),
+                    ),
+                    HorizontalLine(
+                      y: 70,
+                      color: Colors.orange.withOpacity(0.5),
+                      strokeWidth: 1,
+                      dashArray: [5, 5],
+                      label: HorizontalLineLabel(
+                        show: true,
+                        alignment: Alignment.bottomRight,
+                        style: const TextStyle(
+                          fontSize: 9,
+                          color: Colors.orange,
+                        ),
+                        labelResolver: (line) => 'Límite Bajo',
+                      ),
+                    ),
+                  ],
+                ),
+                // 2. CUADRÍCULA SUTIL
+                gridData: FlGridData(
+                  show: true,
+                  drawVerticalLine: false,
+                  getDrawingHorizontalLine: (value) => FlLine(
+                    color: isDark ? Colors.white10 : Colors.black12,
+                    strokeWidth: 1,
+                  ),
+                ),
+                titlesData: FlTitlesData(
+                  show: true,
+                  rightTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  topTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  bottomTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      interval: 40,
+                      getTitlesWidget: (value, meta) => Text(
+                        value.toInt().toString(),
+                        style: TextStyle(
+                          color: Colors.grey.shade500,
+                          fontSize: 10,
+                        ),
+                      ),
+                      reservedSize: 30,
+                    ),
+                  ),
+                ),
                 borderData: FlBorderData(show: false),
                 lineBarsData: [
+                  // LÍNEA DE GLUCOSA (AZUL)
                   if (glucoseSpots.isNotEmpty)
                     LineChartBarData(
                       spots: glucoseSpots,
                       isCurved: true,
-                      color: Colors.blue,
+                      curveSmoothness: 0.35,
+                      color: Colors.blueAccent,
                       barWidth: 4,
-                      dotData: const FlDotData(show: false),
+                      isStrokeCapRound: true,
+                      dotData: FlDotData(
+                        show: true,
+                        getDotPainter: (spot, percent, barData, index) =>
+                            FlDotCirclePainter(
+                              radius: 4,
+                              color: Colors.white,
+                              strokeWidth: 2,
+                              strokeColor: Colors.blueAccent,
+                            ),
+                      ),
                       belowBarData: BarAreaData(
                         show: true,
-                        color: Colors.blue.withOpacity(0.05),
+                        gradient: LinearGradient(
+                          colors: [
+                            Colors.blueAccent.withOpacity(0.2),
+                            Colors.blueAccent.withOpacity(0.0),
+                          ],
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                        ),
                       ),
                     ),
+                  // LÍNEA DE PRESIÓN (ROJA)
                   if (pressureSpots.isNotEmpty)
                     LineChartBarData(
                       spots: pressureSpots,
                       isCurved: true,
+                      curveSmoothness: 0.35,
                       color: Colors.redAccent,
-                      barWidth: 4,
-                      dotData: const FlDotData(show: false),
+                      barWidth: 3,
+                      dotData: FlDotData(
+                        show: true,
+                        getDotPainter: (spot, percent, barData, index) =>
+                            FlDotCirclePainter(
+                              radius: 3,
+                              color: Colors.white,
+                              strokeWidth: 2,
+                              strokeColor: Colors.redAccent,
+                            ),
+                      ),
                       belowBarData: BarAreaData(
                         show: true,
-                        color: Colors.redAccent.withOpacity(0.05),
+                        gradient: LinearGradient(
+                          colors: [
+                            Colors.redAccent.withOpacity(0.1),
+                            Colors.redAccent.withOpacity(0.0),
+                          ],
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                        ),
                       ),
                     ),
                 ],

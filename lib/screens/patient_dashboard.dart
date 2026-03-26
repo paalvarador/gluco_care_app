@@ -269,7 +269,7 @@ class _PatientDashboardState extends State<PatientDashboard> {
           "mg/dL",
           Icons.water_drop,
           Colors.blue,
-          isDark
+          isDark,
         ),
         const SizedBox(width: 15),
         _summaryCard(
@@ -280,7 +280,7 @@ class _PatientDashboardState extends State<PatientDashboard> {
           "mmHg",
           Icons.favorite,
           Colors.redAccent,
-          isDark
+          isDark,
         ),
       ],
     );
@@ -343,49 +343,70 @@ class _PatientDashboardState extends State<PatientDashboard> {
     User user,
     bool isPremium,
   ) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          "Historial Médico",
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: Theme.of(context).colorScheme.onSurface,
-          ),
-        ),
-        TextButton(
-          onPressed: () => _generatePdfReport(
-            allLogs,
-            user.displayName ?? "Paciente",
-            isPremium,
-          ),
-          style: TextButton.styleFrom(
-            backgroundColor: Theme.of(context).cardColor,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // Usamos el StreamBuilder para conocer el estado real de la suscripción del usuario
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .snapshots(),
+      builder: (context, snapshot) {
+        final userData = snapshot.data?.data() as Map<String, dynamic>?;
+        final String status = userData?['subscription_status'] ?? 'free';
+
+        // El acceso al PDF solo se activa si NO es 'free'
+        final bool hasPdfAccess = status != 'free';
+
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              "Historial Médico",
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).colorScheme.onSurface,
+              ),
             ),
-          ),
-          child: Row(
-            children: [
-              Icon(
+            TextButton.icon(
+              onPressed: hasPdfAccess
+                  ? () => _generatePdfReport(
+                      allLogs,
+                      user.displayName ?? "Paciente",
+                      status == 'premium',
+                    )
+                  : () {
+                      // --- CAMBIO AQUÍ: Solo mostramos el mensaje, eliminamos el modal ---
+                      _showSnackBar("Función disponible en el Plan Ideal");
+                    },
+              icon: Icon(
                 Icons.picture_as_pdf_rounded,
-                color: Colors.redAccent,
+                color: hasPdfAccess
+                    ? Colors.redAccent
+                    : Colors.grey.withOpacity(0.5),
                 size: 18,
               ),
-              SizedBox(width: 5),
-              Text(
+              label: Text(
                 "PDF",
                 style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurface,
+                  color: hasPdfAccess
+                      ? Theme.of(context).colorScheme.onSurface
+                      : Colors.grey.withOpacity(0.5),
                   fontWeight: FontWeight.bold,
                   fontSize: 12,
                 ),
               ),
-            ],
-          ),
-        ),
-      ],
+              style: TextButton.styleFrom(
+                backgroundColor: Theme.of(context).cardColor,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -901,6 +922,8 @@ class _PatientDashboardState extends State<PatientDashboard> {
     required VoidCallback onTap,
     bool isBestSeller = false,
   }) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -918,7 +941,7 @@ class _PatientDashboardState extends State<PatientDashboard> {
         ),
         child: Row(
           children: [
-            Icon(icon, color: color, size: 30),
+            Icon(icon, color: isDark ? Colors.grey.shade200 : color, size: 30),
             const SizedBox(width: 15),
             Expanded(
               child: Column(
@@ -967,7 +990,7 @@ class _PatientDashboardState extends State<PatientDashboard> {
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
-                color: color,
+                color: isDark ? Colors.blueAccent : color,
               ),
             ),
           ],

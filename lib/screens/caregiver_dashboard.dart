@@ -77,15 +77,19 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
             // El cuidador es "Premium" si su PACIENTE es Premium
             final bool isPremiumAccess =
                 patientProfile['subscription_status'] == 'premium';
+            final bool isDark = Theme.of(context).brightness == Brightness.dark;
 
             return Scaffold(
-              backgroundColor: const Color(0xFFF8F9FE),
-              appBar: _buildAppBar(linkedName),
+              backgroundColor: isDark
+                  ? const Color(0xFF121212)
+                  : const Color(0xFFF0F2F8),
+              appBar: _buildAppBar(linkedName, isDark),
               body: _buildPatientDataStream(
                 linkedId,
                 isPremiumAccess,
                 patientCutOffTimestamp,
                 linkedName,
+                isDark,
               ),
             );
           },
@@ -100,6 +104,7 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
     bool isPremium,
     Timestamp cutOff,
     String? name,
+    bool isDark,
   ) {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
@@ -123,16 +128,24 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
 
             // Combinar registros
             List<Map<String, dynamic>> allLogs = [];
+
             for (var doc in glucSnapshot.data!.docs) {
               var d = doc.data() as Map<String, dynamic>;
               d['type'] = 'glucose';
               allLogs.add(d);
             }
+
             for (var doc in pressSnapshot.data!.docs) {
               var d = doc.data() as Map<String, dynamic>;
               d['type'] = 'pressure';
               allLogs.add(d);
             }
+
+            allLogs.sort(
+              (a, b) => (b['created_at'] as Timestamp).compareTo(
+                a['created_at'] as Timestamp,
+              ),
+            );
 
             // Aplicar filtro de 48 horas si no es Premium
             List<Map<String, dynamic>> visibleLogs = List.from(allLogs);
@@ -148,7 +161,7 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildQuickSummary(visibleLogs),
+                  _buildQuickSummary(visibleLogs, isDark),
                   const SizedBox(height: 30),
                   HealthChart(allLogs: allLogs, isPremium: isPremium),
                   const SizedBox(height: 30),
@@ -159,7 +172,7 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
                     physics: const NeverScrollableScrollPhysics(),
                     itemCount: visibleLogs.length,
                     itemBuilder: (context, index) =>
-                        _buildUnifiedLogTile(visibleLogs[index]),
+                        _buildUnifiedLogTile(visibleLogs[index], isDark),
                   ),
                   if (!isPremium && allLogs.length > visibleLogs.length)
                     _buildLockedHistoryInfo(),
@@ -174,11 +187,11 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
 
   // --- WIDGETS REDISEÑADOS (Estilo Pro) ---
 
-  AppBar _buildAppBar(String? name) {
+  AppBar _buildAppBar(String? name, bool isDark) {
     return AppBar(
       elevation: 0,
       backgroundColor: Colors.transparent,
-      foregroundColor: Colors.black,
+      foregroundColor: isDark ? Colors.white : Colors.black,
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -201,7 +214,7 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
     );
   }
 
-  Widget _buildQuickSummary(List<Map<String, dynamic>> logs) {
+  Widget _buildQuickSummary(List<Map<String, dynamic>> logs, bool isDark) {
     final lastGluc = logs.firstWhere(
       (l) => l['type'] == 'glucose',
       orElse: () => {},
@@ -218,6 +231,7 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
           lastGluc['value']?.toString() ?? "--",
           "mg/dL",
           Colors.blue,
+          isDark,
         ),
         const SizedBox(width: 15),
         _summaryCard(
@@ -227,17 +241,24 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
               : "--",
           "mmHg",
           Colors.redAccent,
+          isDark,
         ),
       ],
     );
   }
 
-  Widget _summaryCard(String title, String value, String unit, Color color) {
+  Widget _summaryCard(
+    String title,
+    String value,
+    String unit,
+    Color color,
+    bool isDark,
+  ) {
     return Expanded(
       child: Container(
         padding: const EdgeInsets.all(15),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: Theme.of(context).cardColor,
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10),
@@ -257,7 +278,11 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
             const SizedBox(height: 8),
             Text(
               value,
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: isDark ? Colors.white : Colors.black,
+              ),
             ),
             Text(
               unit,
@@ -269,7 +294,7 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
     );
   }
 
-  Widget _buildUnifiedLogTile(Map<String, dynamic> data) {
+  Widget _buildUnifiedLogTile(Map<String, dynamic> data, bool isDark) {
     final bool isGluc = data['type'] == 'glucose';
     final DateTime date = (data['created_at'] as Timestamp).toDate();
     final bool isHigh = data['is_high_risk'] ?? false;
@@ -277,7 +302,7 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(15),
       ),
       child: ListTile(
@@ -291,11 +316,12 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
               : "${data['systolic']}/${data['diastolic']} mmHg",
           style: TextStyle(
             fontWeight: FontWeight.bold,
-            color: isHigh ? Colors.red : Colors.black,
+            color: isHigh ? Colors.red : (isDark ? Colors.white : Colors.black),
           ),
         ),
         subtitle: Text(
           "${_getRelativeDate(date)} • ${DateFormat('hh:mm a').format(date)}",
+          style: const TextStyle(color: Colors.grey),
         ),
         trailing: isHigh
             ? const Icon(Icons.warning_amber_rounded, color: Colors.red)
@@ -310,23 +336,57 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
     bool isPremium,
     bool canExportPDF,
   ) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(
           isPremium ? "Historial Completo" : "Historial Limitado",
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: isDark ? Colors.white : Colors.black,
+          ),
         ),
-        if (canExportPDF)
-          TextButton.icon(
-            onPressed: () =>
-                _generatePdfReport(logs, name ?? "Paciente", isPremium),
-            icon: const Icon(Icons.picture_as_pdf, size: 18, color: Colors.red),
-            label: const Text("PDF", style: TextStyle(color: Colors.red)),
-          )
-        else
-          // Opcional: Mostrar un candado para incitar al upgrade
-          const Icon(Icons.lock_outline, size: 18, color: Colors.grey),
+        // BOTÓN DE PDF DINÁMICO
+        TextButton.icon(
+          onPressed: canExportPDF
+              ? () => _generatePdfReport(logs, name ?? "Paciente", isPremium)
+              : () {
+                  _showSnackBar(
+                    "Función disponible en el Plan Ideal de tu familiar",
+                    Colors.orange,
+                  );
+                },
+          icon: Icon(
+            Icons.picture_as_pdf,
+            size: 18,
+            // Rojo si puede, Gris si no
+            color: canExportPDF
+                ? Colors.redAccent
+                : Colors.grey.withOpacity(0.5),
+          ),
+          label: Text(
+            "PDF",
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+              // Texto tenue si está desactivado
+              color: canExportPDF
+                  ? (isDark ? Colors.white : Colors.black)
+                  : Colors.grey.withOpacity(0.5),
+            ),
+          ),
+          style: TextButton.styleFrom(
+            backgroundColor: isDark
+                ? Colors.white.withOpacity(0.05)
+                : Colors.black.withOpacity(0.05),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -574,114 +634,6 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildChartSection(List<Map<String, dynamic>> logs, bool isPremium) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                isPremium ? "Tendencia Semanal" : "Tendencia (Reciente)",
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
-              ),
-              const Icon(Icons.show_chart, color: Colors.grey, size: 20),
-            ],
-          ),
-          const SizedBox(height: 20),
-          // Aquí llamarías a tu función _buildChart(logs)
-          SizedBox(height: 180, child: _buildChart(logs)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildChart(List<Map<String, dynamic>> allLogs) {
-    final reversedLogs = allLogs.reversed.toList();
-    List<FlSpot> glucoseSpots = [];
-    List<FlSpot> pressureSpots = [];
-
-    for (int i = 0; i < reversedLogs.length; i++) {
-      final log = reversedLogs[i];
-      if (log['type'] == 'glucose') {
-        glucoseSpots.add(
-          FlSpot(i.toDouble(), (log['value'] as num).toDouble()),
-        );
-      } else if (log['type'] == 'pressure')
-        // ignore: curly_braces_in_flow_control_structures
-        pressureSpots.add(
-          FlSpot(i.toDouble(), (log['systolic'] as num).toDouble()),
-        );
-    }
-
-    return LineChart(
-      LineChartData(
-        lineTouchData: LineTouchData(
-          touchTooltipData: LineTouchTooltipData(
-            getTooltipColor: (spot) => const Color(0xFF1E2746),
-            getTooltipItems: (spots) => spots
-                .map(
-                  (s) => LineTooltipItem(
-                    "${s.barIndex == 0 ? 'Gluco' : 'Pres'}: ${s.y.toInt()}",
-                    const TextStyle(
-                      color: Colors.white,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                )
-                .toList(),
-          ),
-        ),
-        gridData: const FlGridData(show: false),
-        titlesData: const FlTitlesData(show: false),
-        borderData: FlBorderData(show: false),
-        lineBarsData: [
-          if (glucoseSpots.isNotEmpty)
-            LineChartBarData(
-              spots: glucoseSpots,
-              isCurved: true,
-              color: Colors.blue,
-              barWidth: 4,
-              dotData: const FlDotData(show: false),
-              belowBarData: BarAreaData(
-                show: true,
-                color: Colors.blue.withOpacity(0.05),
-              ),
-            ),
-          if (pressureSpots.isNotEmpty)
-            LineChartBarData(
-              spots: pressureSpots,
-              isCurved: true,
-              color: Colors.redAccent,
-              barWidth: 4,
-              dotData: const FlDotData(show: false),
-              belowBarData: BarAreaData(
-                show: true,
-                color: Colors.redAccent.withOpacity(0.05),
-              ),
-            ),
-        ],
       ),
     );
   }

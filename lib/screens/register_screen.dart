@@ -18,13 +18,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: isDark
+          ? const Color(0xFF121212)
+          : const Color(0xFFF0F2F8),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.blue),
+          icon: Icon(
+            Icons.arrow_back_ios,
+            color: isDark ? Colors.blueAccent : Colors.blue,
+          ),
           onPressed: () => Navigator.pop(context),
         ),
       ),
@@ -35,18 +42,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 "Crear Cuenta ✨",
                 style: TextStyle(
                   fontSize: 32,
                   fontWeight: FontWeight.bold,
-                  color: Colors.blue,
+                  color: isDark ? Colors.blueAccent : Colors.blue,
                 ),
               ),
               const SizedBox(height: 10),
-              const Text(
+              Text(
                 "Únete a Gluco Care y empieza a monitorear lo que más importa.",
-                style: TextStyle(fontSize: 16, color: Colors.grey),
+                style: TextStyle(
+                  fontSize: 16,
+                  color: isDark ? Colors.white70 : Colors.grey.shade700,
+                ),
               ),
               const SizedBox(height: 40),
 
@@ -59,6 +69,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(15),
                   ),
+                  filled: true,
+                  fillColor: Theme.of(context).cardColor,
                 ),
                 validator: (val) => val!.isEmpty ? "Ingresa tu nombre" : null,
               ),
@@ -74,6 +86,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(15),
                   ),
+                  filled: true,
+                  fillColor: Theme.of(context).cardColor,
                 ),
                 validator: (val) =>
                     !val!.contains("@") ? "Email inválido" : null,
@@ -100,6 +114,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(15),
                   ),
+                  filled: true,
+                  fillColor: Theme.of(context).cardColor,
                 ),
                 validator: (val) =>
                     val!.length < 6 ? "Mínimo 6 caracteres" : null,
