@@ -222,44 +222,52 @@ class _PatientDashboardState extends State<PatientDashboard> {
                           const SizedBox(height: 30),
                           _buildHistoryHeader(allLogs, user, isPremium),
                           const SizedBox(height: 10),
-                          ListView.builder(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            itemCount: allLogs.length,
-                            itemBuilder: (context, index) {
-                              final logData = allLogs[index];
+                          allLogs.isEmpty
+                              ? _buildEmptyState(isDark)
+                              : ListView.builder(
+                                  shrinkWrap: true,
+                                  physics: const NeverScrollableScrollPhysics(),
+                                  itemCount: allLogs.length,
+                                  itemBuilder: (context, index) {
+                                    final logData = allLogs[index];
 
-                              return Dismissible(
-                                key: Key(
-                                  logData['id'] ?? index.toString(),
-                                ), // Firebase ID como llave
-                                direction: DismissDirection.endToStart,
-                                background: Container(
-                                  alignment: Alignment.centerRight,
-                                  padding: const EdgeInsets.only(right: 20),
-                                  margin: const EdgeInsets.only(bottom: 12),
-                                  decoration: BoxDecoration(
-                                    color: Colors.redAccent,
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: const Icon(
-                                    Icons.delete_sweep,
-                                    color: Colors.white,
-                                  ),
+                                    return Dismissible(
+                                      key: Key(
+                                        logData['id'] ?? index.toString(),
+                                      ), // Firebase ID como llave
+                                      direction: DismissDirection.endToStart,
+                                      background: Container(
+                                        alignment: Alignment.centerRight,
+                                        padding: const EdgeInsets.only(
+                                          right: 20,
+                                        ),
+                                        margin: const EdgeInsets.only(
+                                          bottom: 12,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.redAccent,
+                                          borderRadius: BorderRadius.circular(
+                                            20,
+                                          ),
+                                        ),
+                                        child: const Icon(
+                                          Icons.delete_sweep,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                      confirmDismiss: (direction) =>
+                                          _confirmDelete(logData),
+                                      child: InkWell(
+                                        onLongPress: () => _showAddEntry(
+                                          context,
+                                          logData,
+                                        ), // Toque largo para editar
+                                        borderRadius: BorderRadius.circular(20),
+                                        child: _buildUnifiedLogTile(logData),
+                                      ),
+                                    );
+                                  },
                                 ),
-                                confirmDismiss: (direction) =>
-                                    _confirmDelete(logData),
-                                child: InkWell(
-                                  onLongPress: () => _showAddEntry(
-                                    context,
-                                    logData,
-                                  ), // Toque largo para editar
-                                  borderRadius: BorderRadius.circular(20),
-                                  child: _buildUnifiedLogTile(logData),
-                                ),
-                              );
-                            },
-                          ),
                           const SizedBox(height: 100),
                         ],
                       ),
@@ -283,6 +291,38 @@ class _PatientDashboardState extends State<PatientDashboard> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildEmptyState(bool isDark) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 40),
+        child: Column(
+          children: [
+            Icon(
+              Icons.assignment_late_outlined,
+              size: 80,
+              color: isDark ? Colors.white24 : Colors.grey.shade300,
+            ),
+            const SizedBox(height: 20),
+            Text(
+              "¡Empieza tu camino hoy!",
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: isDark ? Colors.white70 : Colors.grey.shade700,
+              ),
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              "Aún no tienes registros de salud.\nPresiona el botón '+' para añadir el primero.",
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey, fontSize: 14),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
