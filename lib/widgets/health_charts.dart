@@ -75,7 +75,7 @@ class HealthChart extends StatelessWidget {
                 ),
                 IconButton(
                   icon: Icon(
-                    Icons.fullscreen_rounded,
+                    Icons.fullscreen_exit_outlined,
                     color: Colors.blue.shade300,
                   ),
                   onPressed: () {
@@ -94,6 +94,15 @@ class HealthChart extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 25),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _buildLegendItem("Glucosa", Colors.blueAccent),
+                const SizedBox(width: 25),
+                _buildLegendItem("Presión", Colors.redAccent),
+              ],
+            ),
+            const SizedBox(height: 20),
             Expanded(
               child: LineChart(
                 LineChartData(
@@ -288,6 +297,37 @@ class HealthChart extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildLegendItem(String label, Color color) {
+    return Row(
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: color.withOpacity(0.4),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: color.withOpacity(0.8),
+          ),
+        ),
+      ],
     );
   }
 }
