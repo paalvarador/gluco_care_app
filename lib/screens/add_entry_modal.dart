@@ -3,7 +3,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class AddEntryModal extends StatefulWidget {
-  const AddEntryModal({super.key});
+  final Map<String, dynamic>? initialData;
+
+  const AddEntryModal({super.key, this.initialData});
 
   @override
   State<AddEntryModal> createState() => _AddEntryModalState();
@@ -37,28 +39,39 @@ class _AddEntryModalState extends State<AddEntryModal> {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return;
 
+      // Obtenemos el ID y la colección
+      final String? docId = widget.initialData?['id'];
+      final String collection = _selectedTypeIndex == 0
+          ? 'glucose_logs'
+          : 'blood_pressure_logs';
+
+      Map<String, dynamic> logData = {
+        'user_id': user.uid,
+        'is_high_risk': _selectedTypeIndex == 0
+            ? _glucoseValue > 180
+            : (_systolic >= 140 || _diastolic >= 90),
+      };
+
       if (_selectedTypeIndex == 0) {
-        // Lógica de Glucosa
-        bool isHighRisk = _glucoseValue > 180;
-        await FirebaseFirestore.instance.collection('glucose_logs').add({
-          'user_id': user.uid,
-          'value': _glucoseValue,
-          'timing': _selectedTiming,
-          'created_at': FieldValue.serverTimestamp(),
-          'is_high_risk': isHighRisk,
-        });
+        logData.addAll({'value': _glucoseValue, 'timing': _selectedTiming});
       } else {
-        // Lógica de Presión Arterial
-        // Definimos riesgo estándar médico: > 140/90
-        bool isHighRisk = _systolic >= 140 || _diastolic >= 90;
-        await FirebaseFirestore.instance.collection('blood_pressure_logs').add({
-          'user_id': user.uid,
+        logData.addAll({
           'systolic': _systolic,
           'diastolic': _diastolic,
           'pulse': _pulse,
-          'created_at': FieldValue.serverTimestamp(),
-          'is_high_risk': isHighRisk,
         });
+      }
+
+      if (docId != null) {
+        // MODO EDICIÓN
+        await FirebaseFirestore.instance
+            .collection(collection)
+            .doc(docId)
+            .update(logData);
+      } else {
+        // MODO NUEVO
+        logData['created_at'] = FieldValue.serverTimestamp();
+        await FirebaseFirestore.instance.collection(collection).add(logData);
       }
 
       if (mounted) Navigator.pop(context);
@@ -68,6 +81,27 @@ class _AddEntryModalState extends State<AddEntryModal> {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text("Error: ${e.toString()}")));
+      }
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+
+    if (widget.initialData != null) {
+      final data = widget.initialData!;
+
+      // Detectamos si es Glucosa o Persión para poner el selector en el lugar correcto
+      _selectedTypeIndex = data['type'] == 'glucose' ? 0 : 1;
+
+      if (_selectedTypeIndex == 0) {
+        _glucoseValue = data['value'] ?? 100;
+        _selectedTiming = data['timing'] ?? 'Ayunas';
+      } else {
+        _systolic = data['systolic'] ?? 120;
+        _diastolic = data['diastolic'] ?? 80;
+        _pulse = data['pulse'] ?? 70;
       }
     }
   }
@@ -129,9 +163,11 @@ class _AddEntryModalState extends State<AddEntryModal> {
                       borderRadius: BorderRadius.circular(15),
                     ),
                   ),
-                  child: const Text(
-                    "Guardar Registro",
-                    style: TextStyle(fontSize: 18),
+                  child: Text(
+                    widget.initialData != null
+                        ? "Actualizar Registro"
+                        : "Guardar Registro",
+                    style: const TextStyle(fontSize: 18),
                   ),
                 ),
           const SizedBox(height: 20),

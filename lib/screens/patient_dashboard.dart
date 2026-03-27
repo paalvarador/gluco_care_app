@@ -4,7 +4,6 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:fl_chart/fl_chart.dart';
 import 'package:gluco_care_app/models/plan_config.dart';
 import 'package:gluco_care_app/widgets/health_charts.dart';
 import 'package:intl/intl.dart';
@@ -188,12 +187,17 @@ class _PatientDashboardState extends State<PatientDashboard> {
                   for (var doc in glucoseSnapshot.data!.docs) {
                     var data = doc.data() as Map<String, dynamic>;
                     data['type'] = 'glucose';
+                    data['id'] = doc.id;
                     allLogs.add(data);
                   }
-                  for (var doc in pressureSnapshot.data!.docs) {
-                    var data = doc.data() as Map<String, dynamic>;
-                    data['type'] = 'pressure';
-                    allLogs.add(data);
+                  if (pressureSnapshot.hasData &&
+                      pressureSnapshot.data != null) {
+                    for (var doc in pressureSnapshot.data!.docs) {
+                      var data = doc.data() as Map<String, dynamic>;
+                      data['type'] = 'pressure';
+                      data['id'] = doc.id;
+                      allLogs.add(data);
+                    }
                   }
                   allLogs.sort(
                     (a, b) => (b['created_at'] as Timestamp).compareTo(
@@ -222,8 +226,39 @@ class _PatientDashboardState extends State<PatientDashboard> {
                             shrinkWrap: true,
                             physics: const NeverScrollableScrollPhysics(),
                             itemCount: allLogs.length,
-                            itemBuilder: (context, index) =>
-                                _buildUnifiedLogTile(allLogs[index]),
+                            itemBuilder: (context, index) {
+                              final logData = allLogs[index];
+
+                              return Dismissible(
+                                key: Key(
+                                  logData['id'] ?? index.toString(),
+                                ), // Firebase ID como llave
+                                direction: DismissDirection.endToStart,
+                                background: Container(
+                                  alignment: Alignment.centerRight,
+                                  padding: const EdgeInsets.only(right: 20),
+                                  margin: const EdgeInsets.only(bottom: 12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.redAccent,
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: const Icon(
+                                    Icons.delete_sweep,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                confirmDismiss: (direction) =>
+                                    _confirmDelete(logData),
+                                child: InkWell(
+                                  onLongPress: () => _showAddEntry(
+                                    context,
+                                    logData,
+                                  ), // Toque largo para editar
+                                  borderRadius: BorderRadius.circular(20),
+                                  child: _buildUnifiedLogTile(logData),
+                                ),
+                              );
+                            },
                           ),
                           const SizedBox(height: 100),
                         ],
@@ -484,18 +519,21 @@ class _PatientDashboardState extends State<PatientDashboard> {
   }
 
   // --- MÉTODOS DE APOYO (Mantener igual que antes) ---
-  void _showAddEntry(BuildContext context) {
+  void _showAddEntry(
+    BuildContext context, [
+    Map<String, dynamic>? initialData,
+  ]) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors
-          .transparent, // Para que el modal se vea moderno con bordes redondeados
+      backgroundColor: Colors.transparent,
       builder: (context) => Container(
         decoration: BoxDecoration(
           color: Theme.of(context).cardColor,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
         ),
-        child: const AddEntryModal(),
+        // Pasamos los datos iniciales al modal
+        child: AddEntryModal(initialData: initialData),
       ),
     );
   }
@@ -619,6 +657,55 @@ class _PatientDashboardState extends State<PatientDashboard> {
     });
 
     setState(() {}); // Refresca el Dashboard para que el banner desaparezca
+  }
+
+  Future<bool?> _confirmDelete(Map<String, dynamic> data) async {
+    // EXTRAER EL ID CORRECTO:
+    // En Firestore, el ID del documento es la "llave" para borrar.
+    final String? docId = data['id'];
+    final String collection = data['type'] == 'glucose'
+        ? 'glucose_logs'
+        : 'blood_pressure_logs';
+
+    if (docId == null) {
+      _showSnackBar("Error: No se encontró el ID del registro");
+      return false;
+    }
+
+    return await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text("¿Borrar registro?"),
+        content: const Text("Esta acción no se puede deshacer."),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("CANCELAR", style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final collection = data['type'] == 'glucose'
+                  ? 'glucose_logs'
+                  : 'blood_pressure_logs';
+
+              await FirebaseFirestore.instance
+                  .collection(collection)
+                  .doc(data['id']) // Asegúrate de que el ID esté en el map
+                  .delete();
+
+              Navigator.pop(context, true);
+              _showSnackBar("Registro eliminado");
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+            child: const Text(
+              "BORRAR",
+              style: TextStyle(color: Colors.white70),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _generatedLinkingCode() async {
