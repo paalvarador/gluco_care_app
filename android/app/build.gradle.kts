@@ -8,7 +8,6 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
-// 1. Sintaxis correcta para Kotlin para leer el archivo
 val keystoreProperties = Properties()
 val keystorePropertiesFile = rootProject.file("key.properties")
 if (keystorePropertiesFile.exists()) {
@@ -21,6 +20,9 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
+        // HABILITAMOS EL DESUGARING PARA NOTIFICACIONES
+        isCoreLibraryDesugaringEnabled = true
+        
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -29,7 +31,6 @@ android {
         jvmTarget = "17"
     }
 
-    // 2. Configuración de firma adaptada a Kotlin
     signingConfigs {
         create("release") {
             keyAlias = keystoreProperties["keyAlias"] as String?
@@ -41,17 +42,19 @@ android {
 
     defaultConfig {
         applicationId = "com.ardev.glucocareapp"
+        // flutter.minSdkVersion suele ser 21, el desugaring ayudará aquí
         minSdk = flutter.minSdkVersion
         targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        
+        // RECOMENDADO: Habilitar multidex por si la app crece mucho
+        multiDexEnabled = true
     }
 
     buildTypes {
         getByName("release") {
-            // 3. Usamos la configuración de firma de release que creamos arriba
             signingConfig = signingConfigs.getByName("release")
-            
             isMinifyEnabled = false
             isShrinkResources = false
         }
@@ -60,4 +63,9 @@ android {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // AGREGAMOS LA LIBRERÍA DE DESUGARING AQUÍ
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.3")
 }
