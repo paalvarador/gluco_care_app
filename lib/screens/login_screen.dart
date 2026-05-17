@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -19,6 +21,46 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   bool _isPasswordVisible = false;
   bool _isLoading = false; // Estado para el indicador de carga
+
+  Future<void> _handleAppleSignIn() async {
+    setState(() => _isLoading = true);
+    try {
+      final user = await AuthService().signInWithApple();
+      if (user != null) {
+        final userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .get();
+        if (!mounted) return;
+        if (userDoc.exists && userDoc.data()!.containsKey('role')) {
+          String role = userDoc.get('role');
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(
+              builder: (context) => role == 'patient'
+                  ? const PatientDashboard()
+                  : const CaregiverDashboard(),
+            ),
+            (route) => false,
+          );
+        } else {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (context) => const InitialDashboard()),
+            (route) => false,
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error al iniciar sesión con Apple: $e")),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
 
   // Lógica para manejar el inicio de sesión con Google y redirección
   Future<void> _handleGoogleSignIn() async {
@@ -59,9 +101,11 @@ class _LoginScreenState extends State<LoginScreen> {
         }
       }
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("Error al iniciar sesión: $e")));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error al iniciar sesión: $e")),
+        );
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -197,6 +241,42 @@ class _LoginScreenState extends State<LoginScreen> {
                     ],
                   ),
                 ),
+                // Botón Apple (solo iOS)
+                if (Platform.isIOS) ...[
+                  const SizedBox(height: 16),
+                  OutlinedButton(
+                    onPressed: _isLoading ? null : _handleAppleSignIn,
+                    style: OutlinedButton.styleFrom(
+                      backgroundColor: isDark ? Colors.white : Colors.black,
+                      minimumSize: const Size(double.infinity, 55),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+                      side: BorderSide(
+                        color: isDark ? Colors.white : Colors.black,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.apple,
+                          size: 22,
+                          color: isDark ? Colors.black : Colors.white,
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          "Continuar con Apple",
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: isDark ? Colors.black : Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 30),
 
                 // Link a Registro
@@ -299,11 +379,13 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     } on FirebaseAuthException catch (e) {
       String message = "Error al ingresar";
-      if (e.code == 'user-not-found')
+      if (e.code == 'user-not-found') {
         message = "No existe una cuenta con este email";
-      if (e.code == 'wrong-password') message = "Contraseña incorrecta";
-      if (e.code == 'invalid-email')
+      }
+      if (e.code == 'wrong-password') { message = "Contraseña incorrecta"; }
+      if (e.code == 'invalid-email') {
         message = "El formato del email es inválido";
+      }
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(message), backgroundColor: Colors.red),

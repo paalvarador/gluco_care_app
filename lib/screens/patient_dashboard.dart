@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -405,32 +406,79 @@ class _PatientDashboardState extends State<PatientDashboard> {
   }
 
   void _listenToPurchaseUpdated(List<PurchaseDetails> purchaseDetailsList) {
-    purchaseDetailsList.forEach((PurchaseDetails purchaseDetails) async {
-      if (purchaseDetails.status == PurchaseStatus.purchased || purchaseDetails.status == PurchaseStatus.restored) {
-        await _updateUserSubscription(purchaseDetails.productID);
-        _showSnackBar("¡Felicidades! Ya eres Premium.");
-      }
-      if (purchaseDetails.pendingCompletePurchase) await _inAppPurchase.completePurchase(purchaseDetails);
-    });
+    for (final purchaseDetails in purchaseDetailsList) {
+      _handlePurchaseUpdate(purchaseDetails);
+    }
   }
 
-  Future<void> _startPurchaseFlow(String planType) async {
+  Future<void> _handlePurchaseUpdate(PurchaseDetails purchaseDetails) async {
+    if (purchaseDetails.status == PurchaseStatus.purchased ||
+        purchaseDetails.status == PurchaseStatus.restored) {
+      await _updateUserSubscription(purchaseDetails.productID);
+      final planName = purchaseDetails.productID.contains('basic')
+          ? 'Básico'
+          : purchaseDetails.productID.contains('ideal')
+              ? 'Ideal'
+              : 'Premium';
+      _showSnackBar("¡Felicidades! Plan $planName activado.");
+    } else if (purchaseDetails.status == PurchaseStatus.error) {
+      _showSnackBar(
+        "Error en la compra: ${purchaseDetails.error?.message ?? 'Inténtalo de nuevo'}",
+      );
+    } else if (purchaseDetails.status == PurchaseStatus.canceled) {
+      _showSnackBar("Compra cancelada.");
+    }
+    if (purchaseDetails.pendingCompletePurchase) {
+      await _inAppPurchase.completePurchase(purchaseDetails);
+    }
+  }
+
+  // planType: 'basic' | 'premium'   period: 'monthly' | 'yearly'
+  Future<void> _startPurchaseFlow(String planType, String period) async {
     setState(() => _isLoading = true);
-    final bool available = await _inAppPurchase.isAvailable();
-    if (!available) { _showSnackBar("La tienda no está disponible."); return; }
-    String productId = planType == 'basic' ? 'glucocare_basic_new' : (planType == 'ideal' ? 'glucocare_ideal_new' : 'glucocare_premium_new');
-    final ProductDetailsResponse response = await _inAppPurchase.queryProductDetails({productId});
-    if (response.notFoundIDs.isNotEmpty) { _showSnackBar("No se encontró el producto."); return; }
-    final PurchaseParam purchaseParam = PurchaseParam(productDetails: response.productDetails.first);
-    _inAppPurchase.buyNonConsumable(purchaseParam: purchaseParam);
-    setState(() => _isLoading = false);
+    try {
+      final bool available = await _inAppPurchase.isAvailable();
+      if (!available) {
+        _showSnackBar("La tienda no está disponible en este momento.");
+        return;
+      }
+
+      final String productId = 'glucocare_${planType}_$period';
+
+      final ProductDetailsResponse response =
+          await _inAppPurchase.queryProductDetails({productId});
+
+      if (response.notFoundIDs.isNotEmpty) {
+        final String storeName =
+            Platform.isIOS ? 'App Store Connect' : 'Google Play Console';
+        _showSnackBar(
+          "Producto no disponible. Configúralo en $storeName "
+          "y prueba en un dispositivo real con cuenta sandbox.",
+        );
+        return;
+      }
+
+      final PurchaseParam purchaseParam =
+          PurchaseParam(productDetails: response.productDetails.first);
+      await _inAppPurchase.buyNonConsumable(purchaseParam: purchaseParam);
+    } catch (e) {
+      _showSnackBar("Error al iniciar la compra: $e");
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _updateUserSubscription(String productId) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
-    String finalStatus = productId.contains('basic') ? 'basic' : (productId.contains('ideal') ? 'ideal' : 'premium');
-    await FirebaseFirestore.instance.collection('users').doc(user.uid).update({'subscription_status': finalStatus});
+    // glucocare_basic_monthly / glucocare_basic_yearly → 'basic'
+    // glucocare_premium_monthly / glucocare_premium_yearly → 'premium'
+    final String finalStatus =
+        productId.contains('basic') ? 'basic' : 'premium';
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .update({'subscription_status': finalStatus});
     setState(() {});
   }
 
@@ -446,7 +494,7 @@ class _PatientDashboardState extends State<PatientDashboard> {
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("CANCELAR")),
           ElevatedButton(onPressed: () async {
             await FirebaseFirestore.instance.collection(data['type'] == 'glucose' ? 'glucose_logs' : 'blood_pressure_logs').doc(docId).delete();
-            Navigator.pop(context, true);
+            if (context.mounted) Navigator.pop(context, true);
             _showSnackBar("Registro eliminado");
           }, style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent), child: const Text("BORRAR")),
         ],
@@ -479,24 +527,247 @@ class _PatientDashboardState extends State<PatientDashboard> {
   }
 
   void _showPremiumModal(BuildContext context) {
-    showModalBottomSheet(context: context, isScrollControlled: true, shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(30))), builder: (context) => Container(padding: const EdgeInsets.all(20), child: Column(mainAxisSize: MainAxisSize.min, children: [
-      _buildPlanCard(title: "Plan Básico", price: "4.99", description: "30 días", icon: Icons.person, color: Colors.blueGrey, onTap: () => _startPurchaseFlow('basic')),
-      _buildPlanCard(title: "Plan Ideal", price: "9.99", description: "90 días", icon: Icons.star, color: Colors.blue, onTap: () => _startPurchaseFlow('ideal'), isBestSeller: true),
-      _buildPlanCard(title: "Plan Premium", price: "14.99", description: "Ilimitado", icon: Icons.all_inclusive, color: const Color(0xFF1E2746), onTap: () => _startPurchaseFlow('premium')),
-    ])));
+    bool isYearly = false;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+      ),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) {
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Título
+                const Text(
+                  "Elige tu plan",
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  "14 días de prueba gratis · Cancela cuando quieras",
+                  style: TextStyle(fontSize: 13, color: Colors.grey),
+                ),
+                const SizedBox(height: 20),
+
+                // Toggle mensual / anual
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade200,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      _periodTab("Mensual", !isYearly, () => setModalState(() => isYearly = false)),
+                      _periodTab("Anual  −40%", isYearly, () => setModalState(() => isYearly = true)),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // Tarjeta Básico
+                _buildPlanCard(
+                  title: "Plan Básico",
+                  monthlyPrice: "2.99",
+                  yearlyPrice: "19.99",
+                  isYearly: isYearly,
+                  features: ["30 días de historial", "Hasta 2 cuidadores", "Exportar PDF"],
+                  icon: Icons.person_outline,
+                  color: Colors.blueGrey,
+                  onTap: () {
+                    Navigator.pop(context);
+                    _startPurchaseFlow('basic', isYearly ? 'yearly' : 'monthly');
+                  },
+                ),
+
+                // Tarjeta Premium
+                _buildPlanCard(
+                  title: "Plan Premium",
+                  monthlyPrice: "6.99",
+                  yearlyPrice: "49.99",
+                  isYearly: isYearly,
+                  features: ["Historial ilimitado", "Cuidadores ilimitados", "Exportar PDF"],
+                  icon: Icons.all_inclusive,
+                  color: const Color(0xFF1E2746),
+                  isBestSeller: true,
+                  onTap: () {
+                    Navigator.pop(context);
+                    _startPurchaseFlow('premium', isYearly ? 'yearly' : 'monthly');
+                  },
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
   }
 
-  Widget _buildPlanCard({required String title, required String price, required String description, required IconData icon, required Color color, required VoidCallback onTap, bool isBestSeller = false}) {
-    return GestureDetector(onTap: onTap, child: Container(margin: const EdgeInsets.only(bottom: 15), padding: const EdgeInsets.all(20), decoration: BoxDecoration(borderRadius: BorderRadius.circular(20), border: Border.all(color: isBestSeller ? color : Colors.grey.shade200, width: 2)), child: Row(children: [Icon(icon, color: color), const SizedBox(width: 15), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontWeight: FontWeight.bold)), Text(description, style: const TextStyle(fontSize: 12))])), Text("\$$price")])));
+  Widget _periodTab(String label, bool active, VoidCallback onTap) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: active ? Colors.blue.shade700 : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            label,
+            style: TextStyle(
+              color: active ? Colors.white : Colors.grey.shade600,
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPlanCard({
+    required String title,
+    required String monthlyPrice,
+    required String yearlyPrice,
+    required bool isYearly,
+    required List<String> features,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+    bool isBestSeller = false,
+  }) {
+    final String displayPrice = isYearly ? yearlyPrice : monthlyPrice;
+    final String period = isYearly ? '/año' : '/mes';
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 14),
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isBestSeller ? color : Colors.grey.shade300,
+            width: isBestSeller ? 2 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, color: color, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  title,
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                ),
+                if (isBestSeller) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: color,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Text(
+                      "POPULAR",
+                      style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+                const Spacer(),
+                RichText(
+                  text: TextSpan(
+                    children: [
+                      TextSpan(
+                        text: "\$$displayPrice",
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: color,
+                        ),
+                      ),
+                      TextSpan(
+                        text: period,
+                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            ...features.map(
+              (f) => Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(
+                  children: [
+                    Icon(Icons.check_circle_outline, size: 14, color: color),
+                    const SizedBox(width: 6),
+                    Text(f, style: const TextStyle(fontSize: 12)),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: onTap,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: color,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+                child: const Text("Comenzar prueba gratis"),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildSubscriptionBanner(String currentStatus) {
     if (currentStatus != 'free') return const SizedBox.shrink();
-    return Container(
-      margin: const EdgeInsets.only(bottom: 20),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(gradient: LinearGradient(colors: [Colors.blue.shade800, Colors.blue.shade500]), borderRadius: BorderRadius.circular(20)),
-      child: Row(children: [const Expanded(child: Text("Modo Gratuito", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))), TextButton(onPressed: () => _showPremiumModal(context), child: const Text("SUBIR", style: TextStyle(color: Colors.white)))]),
+    return GestureDetector(
+      onTap: () => _showPremiumModal(context),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 20),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(colors: [Colors.blue.shade800, Colors.blue.shade500]),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.star_rounded, color: Colors.amber, size: 20),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text("Prueba Premium gratis 14 días", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  Text("Sin compromiso · Cancela cuando quieras", style: TextStyle(color: Colors.white70, fontSize: 11)),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
+              child: Text("VER PLANES", style: TextStyle(color: Colors.blue.shade800, fontWeight: FontWeight.bold, fontSize: 11)),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

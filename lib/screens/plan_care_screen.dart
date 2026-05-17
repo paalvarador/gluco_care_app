@@ -112,15 +112,22 @@ class PlanCareScreen extends StatelessWidget {
   Widget _buildAppointmentsList(String? uid) {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
-          .collection('appointments') // Nombre de la nueva colección
+          .collection('appointments')
           .where('user_id', isEqualTo: uid)
-          .orderBy('date_time', descending: false) // Las más cercanas primero
           .snapshots(),
       builder: (context, snapshot) {
-        if (snapshot.hasError) return const Text("Error al cargar citas");
+        if (snapshot.hasError) {
+          debugPrint("Error citas: ${snapshot.error}");
+          return const Text("Error al cargar citas");
+        }
         if (!snapshot.hasData) return const LinearProgressIndicator();
 
-        final docs = snapshot.data!.docs;
+        final docs = snapshot.data!.docs.toList()
+          ..sort((a, b) {
+            final aDate = (a['appointment_date'] as Timestamp).toDate();
+            final bDate = (b['appointment_date'] as Timestamp).toDate();
+            return aDate.compareTo(bDate);
+          });
 
         if (docs.isEmpty) {
           return const Padding(
@@ -138,7 +145,7 @@ class PlanCareScreen extends StatelessWidget {
           itemCount: docs.length,
           itemBuilder: (context, index) {
             final appt = docs[index].data() as Map<String, dynamic>;
-            final DateTime date = (appt['date_time'] as Timestamp).toDate();
+            final DateTime date = (appt['appointment_date'] as Timestamp).toDate();
 
             return Card(
               margin: const EdgeInsets.only(top: 12),

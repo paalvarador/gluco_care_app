@@ -22,6 +22,14 @@
           }
         },
         {
+          "client_id": "733119792621-k6h9qkq28efratgh9b9ib71ekqlv0jjj.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.ardev.glucocareapp",
+            "certificate_hash": "94b06f6a2d009b2f90fbed8c7b9218483f0d8905"
+          }
+        },
+        {
           "client_id": "733119792621-g7hnf8utvegosd2jkn1cfb6mcudut5pn.apps.googleusercontent.com",
           "client_type": 3
         }
