@@ -171,14 +171,9 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 25),
 
-                // Botón Google (Llamando a la nueva función de redirección)
-                OutlinedButton.icon(
+                // Botón Google
+                OutlinedButton(
                   onPressed: _isLoading ? null : _handleGoogleSignIn,
-                  icon: Image.network(
-                    'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/1200px-Google_%22G%22_logo.svg.png',
-                    height: 24,
-                  ),
-                  label: const Text("Google"),
                   style: OutlinedButton.styleFrom(
                     backgroundColor: Theme.of(context).cardColor,
                     minimumSize: const Size(double.infinity, 55),
@@ -186,6 +181,20 @@ class _LoginScreenState extends State<LoginScreen> {
                       borderRadius: BorderRadius.circular(15),
                     ),
                     side: BorderSide(color: Colors.grey.shade300),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _GoogleLogo(size: 22),
+                      const SizedBox(width: 12),
+                      const Text(
+                        "Continuar con Google",
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 30),
@@ -233,6 +242,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _handleLogin() async {
+
     // Validamos que los campos no estén vacíos
     if (_emailController.text.trim().isEmpty ||
         _passwordController.text.trim().isEmpty) {
@@ -306,4 +316,63 @@ class _LoginScreenState extends State<LoginScreen> {
       if (mounted) setState(() => _isLoading = false);
     }
   }
+}
+
+// Logo de Google con colores oficiales, sin dependencias de red
+class _GoogleLogo extends StatelessWidget {
+  final double size;
+  const _GoogleLogo({this.size = 24});
+
+  @override
+  Widget build(BuildContext context) {
+    // Fondo del botón para que el hueco del logo combine
+    final bg = Theme.of(context).cardColor;
+    return SizedBox(
+      width: size,
+      height: size,
+      child: CustomPaint(painter: _GoogleLogoPainter(bg)),
+    );
+  }
+}
+
+class _GoogleLogoPainter extends CustomPainter {
+  final Color holeColor;
+  const _GoogleLogoPainter(this.holeColor);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cx = size.width / 2;
+    final cy = size.height / 2;
+    final r = size.width / 2;
+
+    const blue   = Color(0xFF4285F4);
+    const red    = Color(0xFFEA4335);
+    const yellow = Color(0xFFFBBC05);
+    const green  = Color(0xFF34A853);
+
+    final arc = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = r * 0.38;
+    final fill = Paint()..style = PaintingStyle.fill;
+    final ring = Rect.fromCircle(center: Offset(cx, cy), radius: r * 0.8);
+
+    arc.color = red;    canvas.drawArc(ring, -1.57, 1.57, false, arc);
+    arc.color = green;  canvas.drawArc(ring,  0.00, 1.57, false, arc);
+    arc.color = yellow; canvas.drawArc(ring,  1.57, 1.05, false, arc);
+    arc.color = blue;   canvas.drawArc(ring,  2.62, 1.09, false, arc);
+
+    // Brazo horizontal de la "G"
+    fill.color = blue;
+    canvas.drawRect(
+      Rect.fromLTWH(cx, cy - r * 0.18, r * 0.85, r * 0.36),
+      fill,
+    );
+
+    // Hueco central del donut
+    fill.color = holeColor;
+    canvas.drawCircle(Offset(cx, cy), r * 0.52, fill);
+  }
+
+  @override
+  bool shouldRepaint(_GoogleLogoPainter old) => old.holeColor != holeColor;
 }
