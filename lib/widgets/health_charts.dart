@@ -75,6 +75,33 @@ class _HealthChartState extends State<HealthChart> {
     final double screenW = MediaQuery.of(context).size.width - 80;
     final double chartWidth = max(screenW, logs.length * _pxPerPoint);
 
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // En un ScrollView la altura es infinita → usamos el default de 210px.
+        // En el fullscreen (altura acotada) calculamos el espacio real restando
+        // el overhead fijo: container padding (32) + header (48) + legend (20)
+        // + spacer (12) + hint (28) = 140px.
+        final double chartAreaHeight = constraints.maxHeight.isFinite
+            ? (constraints.maxHeight - 140).clamp(80.0, double.infinity)
+            : 210.0;
+
+        return _buildContainer(
+          context, isDark, logs, glucoseSpots, pressureSpots,
+          chartWidth, chartAreaHeight,
+        );
+      },
+    );
+  }
+
+  Widget _buildContainer(
+    BuildContext context,
+    bool isDark,
+    List<Map<String, dynamic>> logs,
+    List<FlSpot> glucoseSpots,
+    List<FlSpot> pressureSpots,
+    double chartWidth,
+    double chartAreaHeight,
+  ) {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
       decoration: BoxDecoration(
@@ -141,7 +168,7 @@ class _HealthChartState extends State<HealthChart> {
 
           // ── Área del gráfico (scrolleable) ──────────────────────
           SizedBox(
-            height: 210,
+            height: chartAreaHeight,
             child: logs.isEmpty
                 ? _emptyState(isDark)
                 : SingleChildScrollView(
