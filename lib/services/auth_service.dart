@@ -105,14 +105,11 @@ class AuthService {
 
       return user;
     } on SignInWithAppleAuthorizationException catch (e) {
-      if (e.code != AuthorizationErrorCode.canceled) {
-        debugPrint("Error Apple SignIn: ${e.message}");
-      }
-      return null;
-    } catch (e) {
-      debugPrint("Error Apple SignIn: $e");
-      return null;
+      // Cancelación del usuario — no es un error real
+      if (e.code == AuthorizationErrorCode.canceled) return null;
+      throw Exception("Apple Sign In cancelado por el sistema: ${e.message}");
     }
+    // Cualquier otro error (Firebase, red, etc.) se propaga al caller
   }
 
   // ── Rol para usuarios nuevos (Google / Apple) ──────────────────
