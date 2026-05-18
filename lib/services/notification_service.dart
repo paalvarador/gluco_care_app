@@ -31,12 +31,17 @@ class NotificationService {
       ),
     );
 
-    // Android 13+: POST_NOTIFICATIONS requiere solicitud en runtime
-    await _plugin
+    final androidPlugin = _plugin
         .resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin
-        >()
-        ?.requestNotificationsPermission();
+        >();
+
+    // Android 13+: permiso para mostrar notificaciones
+    await androidPlugin?.requestNotificationsPermission();
+
+    // Android 12+: permiso para programar alarmas exactas.
+    // Sin esto, zonedSchedule falla silenciosamente en API 31+.
+    await androidPlugin?.requestExactAlarmsPermission();
 
     // iOS: solicitud explícita por si el diálogo no se mostró en init
     await _plugin
@@ -59,6 +64,18 @@ class NotificationService {
     iOS: DarwinNotificationDetails(),
   );
 
+  static Future<AndroidScheduleMode> _scheduleMode() async {
+    final canExact = await _plugin
+            .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin
+            >()
+            ?.canScheduleExactNotifications() ??
+        true;
+    return canExact
+        ? AndroidScheduleMode.exactAllowWhileIdle
+        : AndroidScheduleMode.inexactAllowWhileIdle;
+  }
+
   // Recordatorio diario a hora fija
   static Future<void> scheduleMedication(
     int id,
@@ -66,14 +83,13 @@ class NotificationService {
     String dose,
     DateTime time,
   ) async {
-    // v21: zonedSchedule usa todos parámetros nombrados
     await _plugin.zonedSchedule(
       id: id,
       title: 'Hora de tu medicina: $name',
       body: 'Dosis: $dose',
       scheduledDate: _nextInstanceOf(time.hour, time.minute),
       notificationDetails: _notifDetails,
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      androidScheduleMode: await _scheduleMode(),
       matchDateTimeComponents: DateTimeComponents.time,
     );
   }
@@ -86,6 +102,7 @@ class NotificationService {
     DateTime firstTime,
     int intervalHours,
   ) async {
+    final mode = await _scheduleMode();
     final int occurrences = 24 ~/ intervalHours;
     for (int i = 0; i < occurrences; i++) {
       final time = firstTime.add(Duration(hours: intervalHours * i));
@@ -95,7 +112,7 @@ class NotificationService {
         body: 'Dosis: $dose',
         scheduledDate: _nextInstanceOf(time.hour, time.minute),
         notificationDetails: _notifDetails,
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        androidScheduleMode: mode,
         matchDateTimeComponents: DateTimeComponents.time,
       );
     }

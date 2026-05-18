@@ -218,16 +218,36 @@ class _HealthChartState extends State<HealthChart> {
       lineTouchData: LineTouchData(
         touchTooltipData: LineTouchTooltipData(
           getTooltipColor: (_) => const Color(0xFF1E2746),
-          getTooltipItems: (spots) => spots
-              .map((s) => LineTooltipItem(
-                    "${s.barIndex == 0 ? 'Gluc' : 'Pres'}: ${s.y.toInt()}",
-                    const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ))
-              .toList(),
+          fitInsideHorizontally: true,
+          fitInsideVertically: true,
+          getTooltipItems: (spots) => spots.map((s) {
+            final i = s.x.toInt();
+            final log = (i >= 0 && i < logs.length) ? logs[i] : null;
+            final time = log != null
+                ? DateFormat('HH:mm  dd/MM').format(
+                    (log['created_at'] as Timestamp).toDate())
+                : '';
+            final label = s.barIndex == 0 ? 'Glucosa' : 'Presión';
+            final unit  = s.barIndex == 0 ? 'mg/dL'  : 'mmHg';
+            return LineTooltipItem(
+              '$label: ${s.y.toInt()} $unit',
+              const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+              children: [
+                TextSpan(
+                  text: '\n$time',
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.normal,
+                    color: Colors.white70,
+                  ),
+                ),
+              ],
+            );
+          }).toList(),
         ),
       ),
 
@@ -280,26 +300,32 @@ class _HealthChartState extends State<HealthChart> {
           sideTitles: SideTitles(
             showTitles: true,
             interval: 1,
-            reservedSize: 28,
+            reservedSize: 38,
             getTitlesWidget: (value, _) {
               final i = value.toInt();
               if (i < 0 || i >= logs.length) return const SizedBox.shrink();
               final date = (logs[i]['created_at'] as Timestamp).toDate();
-              final now = DateTime.now();
-              final label = (date.year == now.year &&
-                      date.month == now.month &&
-                      date.day == now.day)
-                  ? DateFormat('HH:mm').format(date)
-                  : DateFormat('dd/MM').format(date);
               return Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    color: Colors.grey.shade500,
-                    fontSize: 9,
-                    fontWeight: FontWeight.w500,
-                  ),
+                padding: const EdgeInsets.only(top: 4),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      DateFormat('dd/MM').format(date),
+                      style: TextStyle(
+                        color: Colors.grey.shade500,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    Text(
+                      DateFormat('HH:mm').format(date),
+                      style: TextStyle(
+                        color: Colors.grey.shade400,
+                        fontSize: 8,
+                      ),
+                    ),
+                  ],
                 ),
               );
             },
