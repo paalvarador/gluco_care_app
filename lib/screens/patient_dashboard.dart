@@ -256,22 +256,10 @@ class _PatientDashboardState extends State<PatientDashboard> {
                                   itemCount: allLogs.length,
                                   itemBuilder: (context, index) {
                                     final logData = allLogs[index];
-                                    return Dismissible(
-                                      key: Key(logData['id'] ?? index.toString()),
-                                      direction: DismissDirection.endToStart,
-                                      background: Container(
-                                        alignment: Alignment.centerRight,
-                                        padding: const EdgeInsets.only(right: 20),
-                                        margin: const EdgeInsets.only(bottom: 12),
-                                        decoration: BoxDecoration(color: Colors.redAccent, borderRadius: BorderRadius.circular(20)),
-                                        child: const Icon(Icons.delete_sweep, color: Colors.white),
-                                      ),
-                                      confirmDismiss: (direction) => _confirmDelete(logData),
-                                      child: InkWell(
-                                        onLongPress: () => _showAddEntry(context, logData),
-                                        borderRadius: BorderRadius.circular(20),
-                                        child: _buildUnifiedLogTile(logData),
-                                      ),
+                                    return _buildUnifiedLogTile(
+                                      logData,
+                                      onEdit: () => _showAddEntry(context, logData),
+                                      onDelete: () => _confirmDelete(logData),
                                     );
                                   },
                                 ),
@@ -371,20 +359,98 @@ class _PatientDashboardState extends State<PatientDashboard> {
     );
   }
 
-  Widget _buildUnifiedLogTile(Map<String, dynamic> data) {
+  Widget _buildUnifiedLogTile(
+    Map<String, dynamic> data, {
+    VoidCallback? onEdit,
+    VoidCallback? onDelete,
+  }) {
     final bool isGluc = data['type'] == 'glucose';
     final DateTime date = (data['created_at'] as Timestamp).toDate();
     final bool isHigh = data['is_high_risk'] ?? false;
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
-      decoration: BoxDecoration(color: Theme.of(context).cardColor, borderRadius: BorderRadius.circular(20), border: Border.all(color: isHigh ? Colors.red.withOpacity(0.2) : Colors.transparent)),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isHigh ? Colors.red.withValues(alpha: 0.2) : Colors.transparent,
+        ),
+      ),
       child: Row(
         children: [
-          Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: (isGluc ? Colors.blue : Colors.red).withOpacity(0.1), borderRadius: BorderRadius.circular(15)), child: Icon(isGluc ? Icons.bloodtype_outlined : Icons.favorite_outline, color: isGluc ? Colors.blue : Colors.red, size: 22)),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: (isGluc ? Colors.blue : Colors.red).withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(15),
+            ),
+            child: Icon(
+              isGluc ? Icons.bloodtype_outlined : Icons.favorite_outline,
+              color: isGluc ? Colors.blue : Colors.red,
+              size: 22,
+            ),
+          ),
           const SizedBox(width: 15),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(isGluc ? "${data['value']} mg/dL" : "${data['systolic']}/${data['diastolic']} mmHg", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), Text(DateFormat('hh:mm a • d MMM').format(date), style: TextStyle(color: Colors.grey.shade500, fontSize: 12))])),
-          if (isHigh) Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), decoration: BoxDecoration(color: Colors.red.withOpacity(0.1), borderRadius: BorderRadius.circular(10)), child: const Text("ALERTA", style: TextStyle(color: Colors.red, fontSize: 10, fontWeight: FontWeight.bold))),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isGluc
+                      ? "${data['value']} mg/dL"
+                      : "${data['systolic']}/${data['diastolic']} mmHg",
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+                Text(
+                  DateFormat('hh:mm a • d MMM').format(date),
+                  style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          if (isHigh)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.red.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Text(
+                "ALERTA",
+                style: TextStyle(color: Colors.red, fontSize: 10, fontWeight: FontWeight.bold),
+              ),
+            ),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert, color: Colors.grey, size: 20),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            onSelected: (value) {
+              if (value == 'edit') onEdit?.call();
+              if (value == 'delete') onDelete?.call();
+            },
+            itemBuilder: (_) => [
+              const PopupMenuItem(
+                value: 'edit',
+                child: Row(
+                  children: [
+                    Icon(Icons.edit_outlined, size: 18, color: Colors.blueAccent),
+                    SizedBox(width: 10),
+                    Text("Editar"),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'delete',
+                child: Row(
+                  children: [
+                    Icon(Icons.delete_outline, size: 18, color: Colors.redAccent),
+                    SizedBox(width: 10),
+                    Text("Eliminar", style: TextStyle(color: Colors.redAccent)),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );
