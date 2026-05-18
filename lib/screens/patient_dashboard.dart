@@ -27,7 +27,8 @@ class _PatientDashboardState extends State<PatientDashboard> {
   final InAppPurchase _inAppPurchase = InAppPurchase.instance;
   late StreamSubscription<List<PurchaseDetails>> _subscription;
   bool _isLoading = false;
-  int _currentIndex = 0; // NUEVO: Control de pestaña
+  int _currentIndex = 0;
+  int _visibleCount = 20;
 
   @override
   void initState() {
@@ -248,21 +249,56 @@ class _PatientDashboardState extends State<PatientDashboard> {
                           const SizedBox(height: 30),
                           _buildHistoryHeader(allLogs, user, isPremium),
                           const SizedBox(height: 10),
-                          allLogs.isEmpty
-                              ? _buildEmptyState(isDark)
-                              : ListView.builder(
-                                  shrinkWrap: true,
-                                  physics: const NeverScrollableScrollPhysics(),
-                                  itemCount: allLogs.length,
-                                  itemBuilder: (context, index) {
-                                    final logData = allLogs[index];
-                                    return _buildUnifiedLogTile(
-                                      logData,
-                                      onEdit: () => _showAddEntry(context, logData),
-                                      onDelete: () => _confirmDelete(logData),
-                                    );
-                                  },
+                          if (allLogs.isEmpty)
+                            _buildEmptyState(isDark)
+                          else ...[
+                            ListView.builder(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              itemCount: min(_visibleCount, allLogs.length),
+                              itemBuilder: (context, index) {
+                                final logData = allLogs[index];
+                                return _buildUnifiedLogTile(
+                                  logData,
+                                  onEdit: () => _showAddEntry(context, logData),
+                                  onDelete: () => _confirmDelete(logData),
+                                );
+                              },
+                            ),
+                            if (allLogs.length > _visibleCount)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 4, bottom: 8),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: OutlinedButton.icon(
+                                        onPressed: () => setState(() => _visibleCount += 20),
+                                        icon: const Icon(Icons.expand_more_rounded),
+                                        label: Text(
+                                          "Ver más  (${allLogs.length - _visibleCount} restantes)",
+                                        ),
+                                        style: OutlinedButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(vertical: 14),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(16),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
+                              )
+                            else if (allLogs.length > 20)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 4, bottom: 8),
+                                child: Center(
+                                  child: TextButton(
+                                    onPressed: () => setState(() => _visibleCount = 20),
+                                    child: const Text("Mostrar menos"),
+                                  ),
+                                ),
+                              ),
+                          ],
                           const SizedBox(height: 100),
                         ],
                       ),
@@ -548,24 +584,49 @@ class _PatientDashboardState extends State<PatientDashboard> {
     setState(() {});
   }
 
-  Future<bool?> _confirmDelete(Map<String, dynamic> data) async {
+  Future<void> _confirmDelete(Map<String, dynamic> data) async {
     final String? docId = data['id'];
-    if (docId == null) return false;
-    return await showDialog(
+    if (docId == null) return;
+
+    final bool isGluc = data['type'] == 'glucose';
+    final String label = isGluc ? 'glucosa' : 'presión arterial';
+    final String value = isGluc
+        ? "${data['value']} mg/dL"
+        : "${data['systolic']}/${data['diastolic']} mmHg";
+
+    final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text("¿Borrar registro?"),
+        title: const Text("¿Eliminar registro?"),
+        content: Text(
+          "Se eliminará el registro de $label ($value). Esta acción no se puede deshacer.",
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("CANCELAR")),
-          ElevatedButton(onPressed: () async {
-            await FirebaseFirestore.instance.collection(data['type'] == 'glucose' ? 'glucose_logs' : 'blood_pressure_logs').doc(docId).delete();
-            if (context.mounted) Navigator.pop(context, true);
-            _showSnackBar("Registro eliminado");
-          }, style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent), child: const Text("BORRAR")),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text("CANCELAR"),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text("ELIMINAR"),
+          ),
         ],
       ),
     );
+
+    if (confirmed != true) return;
+
+    await FirebaseFirestore.instance
+        .collection(isGluc ? 'glucose_logs' : 'blood_pressure_logs')
+        .doc(docId)
+        .delete();
+
+    _showSnackBar("Registro eliminado");
   }
 
   Future<void> _generatedLinkingCode() async {
