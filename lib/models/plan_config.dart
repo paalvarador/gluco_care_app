@@ -15,20 +15,14 @@ class PlanConfig {
 
   static PlanConfig getSettings(String status) {
     switch (status) {
-      case 'basic':
+      case 'pro':
+      case 'premium': // backward-compat: existing glucocare_premium_monthly subscriber
+      case 'ideal':   // backward-compat: legacy status
+      case 'basic':   // backward-compat: legacy basic subscribers get Pro features
         return PlanConfig(
-          status: 'basic',
-          name: 'Básico',
-          maxCaregivers: 2,
-          historyDays: 30,
-          hasPdf: true,
-        );
-      case 'premium':
-      case 'ideal': // backward-compat for existing Firestore users
-        return PlanConfig(
-          status: 'premium',
-          name: 'Premium',
-          maxCaregivers: 99,
+          status: 'pro',
+          name: 'Pro',
+          maxCaregivers: 5,
           historyDays: 9999,
           hasPdf: true,
         );
@@ -38,7 +32,7 @@ class PlanConfig {
           status: 'free',
           name: 'Gratuito',
           maxCaregivers: 1,
-          historyDays: 3,
+          historyDays: 7,
           hasPdf: false,
         );
     }

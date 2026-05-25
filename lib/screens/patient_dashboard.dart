@@ -10,7 +10,8 @@ import 'package:gluco_care_app/widgets/health_charts.dart';
 import 'package:intl/intl.dart';
 import 'add_entry_modal.dart';
 import 'welcome_screen.dart';
-import 'plan_care_screen.dart'; // Asegúrate de crear este archivo
+import 'plan_care_screen.dart';
+import 'notification_settings_screen.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -29,11 +30,18 @@ class _PatientDashboardState extends State<PatientDashboard> {
   bool _isLoading = false;
   int _currentIndex = 0;
   int _visibleCount = 20;
+  final Map<String, ProductDetails> _products = {};
+
+  static const Set<String> _productIds = {
+    'glucocare_pro_monthly',
+    'glucocare_pro_yearly',
+  };
 
   @override
   void initState() {
     super.initState();
     _checkAuthStatus();
+    _loadProducts();
     final Stream<List<PurchaseDetails>> purchaseUpdated =
         _inAppPurchase.purchaseStream;
     _subscription = purchaseUpdated.listen(
@@ -43,6 +51,22 @@ class _PatientDashboardState extends State<PatientDashboard> {
       onDone: () => _subscription.cancel(),
       onError: (error) => _showSnackBar("Error de conexión"),
     );
+  }
+
+  Future<void> _loadProducts() async {
+    try {
+      final bool available = await _inAppPurchase.isAvailable();
+      if (!available) return;
+      final ProductDetailsResponse response =
+          await _inAppPurchase.queryProductDetails(_productIds);
+      if (mounted && response.productDetails.isNotEmpty) {
+        setState(() {
+          for (final p in response.productDetails) {
+            _products[p.id] = p;
+          }
+        });
+      }
+    } catch (_) {}
   }
 
   @override
@@ -129,7 +153,8 @@ class _PatientDashboardState extends State<PatientDashboard> {
         );
         Timestamp cutOffTimestamp = Timestamp.fromDate(cutOffDate);
 
-        final bool isPremium = userData?['subscription_status'] == 'premium';
+        final String subStatus = userData?['subscription_status'] ?? 'free';
+        final bool isPremium = subStatus == 'pro' || subStatus == 'premium' || subStatus == 'ideal';
 
         return Scaffold(
           backgroundColor: isDark
@@ -144,7 +169,13 @@ class _PatientDashboardState extends State<PatientDashboard> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  "Hola, ${userData?['full_name']?.split(' ')[0] ?? 'Paciente'}",
+                  "Hola, ${() {
+                    final raw = (userData?['full_name'] as String? ?? '').trim();
+                    if (raw.isNotEmpty) return raw.split(' ').first;
+                    final authName = (user.displayName ?? '').trim();
+                    if (authName.isNotEmpty) return authName.split(' ').first;
+                    return 'Paciente';
+                  }()}",
                   style: TextStyle(
                     fontSize: 19,
                     color: isDark ? Colors.blueAccent : Colors.blue.shade700,
@@ -167,7 +198,7 @@ class _PatientDashboardState extends State<PatientDashboard> {
                 icon: Container(
                   padding: const EdgeInsets.all(6),
                   decoration: BoxDecoration(
-                    color: Colors.blue.withOpacity(0.1),
+                    color: Colors.blue.withValues(alpha: 0.1),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(
@@ -176,6 +207,17 @@ class _PatientDashboardState extends State<PatientDashboard> {
                     size: 20,
                   ),
                 ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.notifications_outlined),
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const NotificationSettingsScreen(),
+                  ),
+                ),
+                color: Colors.blue,
+                tooltip: 'Configurar notificaciones',
               ),
               IconButton(
                 icon: const Icon(Icons.logout_rounded),
@@ -517,12 +559,7 @@ class _PatientDashboardState extends State<PatientDashboard> {
     if (purchaseDetails.status == PurchaseStatus.purchased ||
         purchaseDetails.status == PurchaseStatus.restored) {
       await _updateUserSubscription(purchaseDetails.productID);
-      final planName = purchaseDetails.productID.contains('basic')
-          ? 'Básico'
-          : purchaseDetails.productID.contains('ideal')
-              ? 'Ideal'
-              : 'Premium';
-      _showSnackBar("¡Felicidades! Plan $planName activado.");
+      _showSnackBar("¡Felicidades! Plan Pro activado.");
     } else if (purchaseDetails.status == PurchaseStatus.error) {
       _showSnackBar(
         "Error en la compra: ${purchaseDetails.error?.message ?? 'Inténtalo de nuevo'}",
@@ -535,8 +572,8 @@ class _PatientDashboardState extends State<PatientDashboard> {
     }
   }
 
-  // planType: 'basic' | 'premium'   period: 'monthly' | 'yearly'
-  Future<void> _startPurchaseFlow(String planType, String period) async {
+  // period: 'monthly' | 'yearly'
+  Future<void> _startPurchaseFlow(String period) async {
     setState(() => _isLoading = true);
     try {
       final bool available = await _inAppPurchase.isAvailable();
@@ -545,7 +582,15 @@ class _PatientDashboardState extends State<PatientDashboard> {
         return;
       }
 
-      final String productId = 'glucocare_${planType}_$period';
+      final String productId = 'glucocare_pro_$period';
+
+      // Use cached ProductDetails when available to avoid an extra network call
+      final ProductDetails? cached = _products[productId];
+      if (cached != null) {
+        final PurchaseParam purchaseParam = PurchaseParam(productDetails: cached);
+        await _inAppPurchase.buyNonConsumable(purchaseParam: purchaseParam);
+        return;
+      }
 
       final ProductDetailsResponse response =
           await _inAppPurchase.queryProductDetails({productId});
@@ -573,14 +618,11 @@ class _PatientDashboardState extends State<PatientDashboard> {
   Future<void> _updateUserSubscription(String productId) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
-    // glucocare_basic_monthly / glucocare_basic_yearly → 'basic'
-    // glucocare_premium_monthly / glucocare_premium_yearly → 'premium'
-    final String finalStatus =
-        productId.contains('basic') ? 'basic' : 'premium';
+    // All active product IDs (new and legacy) map to 'pro'
     await FirebaseFirestore.instance
         .collection('users')
         .doc(user.uid)
-        .update({'subscription_status': finalStatus});
+        .update({'subscription_status': 'pro'});
     setState(() {});
   }
 
@@ -655,74 +697,77 @@ class _PatientDashboardState extends State<PatientDashboard> {
 
   void _showPremiumModal(BuildContext context) {
     bool isYearly = false;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final accentColor = isDark ? Colors.blue.shade300 : const Color(0xFF1E2746);
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
       ),
       builder: (context) => StatefulBuilder(
         builder: (context, setModalState) {
+          final period = isYearly ? 'yearly' : 'monthly';
+          final proPrice = _products['glucocare_pro_$period']?.price
+              ?? (isYearly ? r'$39.99' : r'$4.99');
+
           return Padding(
             padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Título
-                const Text(
-                  "Elige tu plan",
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                Text(
+                  "GlucoCare Pro",
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : Colors.black,
+                  ),
                 ),
                 const SizedBox(height: 4),
-                const Text(
-                  "14 días de prueba gratis · Cancela cuando quieras",
-                  style: TextStyle(fontSize: 13, color: Colors.grey),
+                Text(
+                  "28 días de prueba gratis · Cancela cuando quieras",
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                  ),
                 ),
                 const SizedBox(height: 20),
 
-                // Toggle mensual / anual
                 Container(
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade200,
+                    color: isDark ? Colors.grey.shade800 : Colors.grey.shade200,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Row(
                     children: [
-                      _periodTab("Mensual", !isYearly, () => setModalState(() => isYearly = false)),
-                      _periodTab("Anual  −40%", isYearly, () => setModalState(() => isYearly = true)),
+                      _periodTab("Mensual", !isYearly, isDark,
+                          () => setModalState(() => isYearly = false)),
+                      _periodTab("Anual  −33%", isYearly, isDark,
+                          () => setModalState(() => isYearly = true)),
                     ],
                   ),
                 ),
                 const SizedBox(height: 20),
 
-                // Tarjeta Básico
                 _buildPlanCard(
-                  title: "Plan Básico",
-                  monthlyPrice: "2.99",
-                  yearlyPrice: "19.99",
+                  title: "Plan Pro",
+                  displayPrice: proPrice,
                   isYearly: isYearly,
-                  features: ["30 días de historial", "Hasta 2 cuidadores", "Exportar PDF"],
-                  icon: Icons.person_outline,
-                  color: Colors.blueGrey,
-                  onTap: () {
-                    Navigator.pop(context);
-                    _startPurchaseFlow('basic', isYearly ? 'yearly' : 'monthly');
-                  },
-                ),
-
-                // Tarjeta Premium
-                _buildPlanCard(
-                  title: "Plan Premium",
-                  monthlyPrice: "6.99",
-                  yearlyPrice: "49.99",
-                  isYearly: isYearly,
-                  features: ["Historial ilimitado", "Cuidadores ilimitados", "Exportar PDF"],
+                  isDark: isDark,
+                  features: [
+                    "Historial ilimitado",
+                    "Hasta 5 cuidadores",
+                    "Exportar PDF",
+                    "28 días de prueba gratis",
+                  ],
                   icon: Icons.all_inclusive,
-                  color: const Color(0xFF1E2746),
-                  isBestSeller: true,
+                  accentColor: accentColor,
                   onTap: () {
                     Navigator.pop(context);
-                    _startPurchaseFlow('premium', isYearly ? 'yearly' : 'monthly');
+                    _startPurchaseFlow(period);
                   },
                 ),
               ],
@@ -733,7 +778,7 @@ class _PatientDashboardState extends State<PatientDashboard> {
     );
   }
 
-  Widget _periodTab(String label, bool active, VoidCallback onTap) {
+  Widget _periodTab(String label, bool active, bool isDark, VoidCallback onTap) {
     return Expanded(
       child: GestureDetector(
         onTap: onTap,
@@ -748,7 +793,11 @@ class _PatientDashboardState extends State<PatientDashboard> {
           child: Text(
             label,
             style: TextStyle(
-              color: active ? Colors.white : Colors.grey.shade600,
+              color: active
+                  ? Colors.white
+                  : isDark
+                      ? Colors.grey.shade300
+                      : Colors.grey.shade600,
               fontWeight: FontWeight.w600,
               fontSize: 13,
             ),
@@ -760,17 +809,20 @@ class _PatientDashboardState extends State<PatientDashboard> {
 
   Widget _buildPlanCard({
     required String title,
-    required String monthlyPrice,
-    required String yearlyPrice,
+    required String displayPrice,
     required bool isYearly,
+    required bool isDark,
     required List<String> features,
     required IconData icon,
-    required Color color,
+    required Color accentColor,
     required VoidCallback onTap,
     bool isBestSeller = false,
   }) {
-    final String displayPrice = isYearly ? yearlyPrice : monthlyPrice;
     final String period = isYearly ? '/año' : '/mes';
+    final cardBg = isDark ? const Color(0xFF252D3D) : Colors.white;
+    final borderColor = isDark ? Colors.blue.shade700 : const Color(0xFF1E2746);
+    final textColor = isDark ? Colors.white : Colors.black;
+    final subTextColor = isDark ? Colors.grey.shade300 : Colors.grey.shade700;
 
     return GestureDetector(
       onTap: onTap,
@@ -778,34 +830,49 @@ class _PatientDashboardState extends State<PatientDashboard> {
         margin: const EdgeInsets.only(bottom: 14),
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
+          color: cardBg,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isBestSeller ? color : Colors.grey.shade300,
-            width: isBestSeller ? 2 : 1,
-          ),
+          border: Border.all(color: borderColor, width: 2),
+          boxShadow: isDark
+              ? []
+              : [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.08),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Icon(icon, color: color, size: 20),
+                Icon(icon, color: accentColor, size: 20),
                 const SizedBox(width: 8),
                 Text(
                   title,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                    color: textColor,
+                  ),
                 ),
                 if (isBestSeller) ...[
                   const SizedBox(width: 8),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
-                      color: color,
+                      color: accentColor,
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: const Text(
                       "POPULAR",
-                      style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ],
@@ -814,47 +881,58 @@ class _PatientDashboardState extends State<PatientDashboard> {
                   text: TextSpan(
                     children: [
                       TextSpan(
-                        text: "\$$displayPrice",
+                        text: displayPrice,
                         style: TextStyle(
-                          fontSize: 18,
+                          fontSize: 20,
                           fontWeight: FontWeight.bold,
-                          color: color,
+                          color: accentColor,
                         ),
                       ),
                       TextSpan(
                         text: period,
-                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: subTextColor,
+                        ),
                       ),
                     ],
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             ...features.map(
               (f) => Padding(
-                padding: const EdgeInsets.only(bottom: 4),
+                padding: const EdgeInsets.only(bottom: 6),
                 child: Row(
                   children: [
-                    Icon(Icons.check_circle_outline, size: 14, color: color),
-                    const SizedBox(width: 6),
-                    Text(f, style: const TextStyle(fontSize: 12)),
+                    Icon(Icons.check_circle_outline, size: 15, color: accentColor),
+                    const SizedBox(width: 8),
+                    Text(
+                      f,
+                      style: TextStyle(fontSize: 13, color: subTextColor),
+                    ),
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
                 onPressed: onTap,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: color,
+                  backgroundColor: accentColor,
                   foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
-                child: const Text("Comenzar prueba gratis"),
+                child: const Text(
+                  "Comenzar prueba gratis",
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
               ),
             ),
           ],
@@ -882,7 +960,7 @@ class _PatientDashboardState extends State<PatientDashboard> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text("Prueba Premium gratis 14 días", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  Text("Activa GlucoCare Pro — 28 días gratis", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                   Text("Sin compromiso · Cancela cuando quieras", style: TextStyle(color: Colors.white70, fontSize: 11)),
                 ],
               ),

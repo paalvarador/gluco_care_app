@@ -112,6 +112,7 @@ class PlanCareScreen extends StatelessWidget {
       BuildContext context, String docId, String doctor) async {
     final confirmed = await _confirmDelete(context, doctor, isMed: false);
     if (!confirmed) return;
+    await NotificationService.cancelAppointment(docId.hashCode);
     await FirebaseFirestore.instance
         .collection('appointments')
         .doc(docId)

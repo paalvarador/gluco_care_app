@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:gluco_care_app/screens/welcome_screen.dart';
+import 'package:gluco_care_app/screens/patient_dashboard.dart';
+import 'package:gluco_care_app/screens/caregiver_dashboard.dart';
 import 'firebase_options.dart';
 import 'package:gluco_care_app/services/notification_service.dart';
 
@@ -50,7 +53,52 @@ class MyApp extends StatelessWidget {
       ),
 
       themeMode: ThemeMode.system, // Cambia según el iPhone o Android
-      home: const WelcomeScreen(),
+      home: const AuthGate(),
+    );
+  }
+}
+
+class AuthGate extends StatelessWidget {
+  const AuthGate({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, authSnapshot) {
+        if (authSnapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        final user = authSnapshot.data;
+        if (user == null) return const WelcomeScreen();
+
+        return FutureBuilder<DocumentSnapshot>(
+          future: FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .get(),
+          builder: (context, userSnapshot) {
+            if (!userSnapshot.hasData) {
+              return const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              );
+            }
+
+            final data = userSnapshot.data?.data() as Map<String, dynamic>?;
+            if (data == null || !data.containsKey('role')) {
+              // Usuario sin rol asignado aún → flujo de login normal
+              return const WelcomeScreen();
+            }
+
+            return data['role'] == 'caregiver'
+                ? const CaregiverDashboard()
+                : const PatientDashboard();
+          },
+        );
+      },
     );
   }
 }

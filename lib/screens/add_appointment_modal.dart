@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import 'package:gluco_care_app/services/notification_service.dart';
 
 class AddAppointmentModal extends StatefulWidget {
   final String? docId;
@@ -78,10 +79,24 @@ class _AddAppointmentModalState extends State<AddAppointmentModal> {
             .collection('appointments')
             .doc(widget.docId)
             .update(payload);
+        // Cancel old notification and reschedule with updated date
+        await NotificationService.cancelAppointment(widget.docId!.hashCode);
+        await NotificationService.scheduleAppointment(
+          widget.docId!.hashCode,
+          _doctorController.text,
+          _specialtyController.text,
+          appointmentDateTime,
+        );
       } else {
-        await FirebaseFirestore.instance
+        final docRef = await FirebaseFirestore.instance
             .collection('appointments')
             .add({...payload, 'created_at': FieldValue.serverTimestamp()});
+        await NotificationService.scheduleAppointment(
+          docRef.id.hashCode,
+          _doctorController.text,
+          _specialtyController.text,
+          appointmentDateTime,
+        );
       }
 
       if (mounted) Navigator.pop(context);
