@@ -6,6 +6,9 @@ import 'package:gluco_care_app/services/notification_service.dart';
 import 'package:intl/intl.dart';
 import 'add_medication_modal.dart';
 
+// Returns today's date as 'yyyy-MM-dd' string
+String _todayStr() => DateFormat('yyyy-MM-dd').format(DateTime.now());
+
 class PlanCareScreen extends StatelessWidget {
   const PlanCareScreen({super.key});
 
@@ -198,29 +201,12 @@ class PlanCareScreen extends StatelessWidget {
           itemBuilder: (context, index) {
             final doc = docs[index];
             final med = doc.data() as Map<String, dynamic>;
-            return Card(
-              margin: const EdgeInsets.only(top: 10),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(15)),
-              child: ListTile(
-                leading:
-                    const Icon(Icons.medication, color: Colors.blue),
-                title: Text(med['name'] ?? '',
-                    style:
-                        const TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text(
-                    "${med['dosage'] ?? ''} • ${med['time'] ?? ''}"),
-                trailing: _actionMenu(
-                  context,
-                  onEdit: () => _openMedicationModal(
-                    context,
-                    docId: doc.id,
-                    data: med,
-                  ),
-                  onDelete: () =>
-                      _deleteMedication(context, doc.id, med['name'] ?? ''),
-                ),
-              ),
+            return _MedicationCard(
+              docId: doc.id,
+              med: med,
+              uid: uid ?? '',
+              onEdit: () => _openMedicationModal(context, docId: doc.id, data: med),
+              onDelete: () => _deleteMedication(context, doc.id, med['name'] ?? ''),
             );
           },
         );
@@ -243,16 +229,28 @@ class PlanCareScreen extends StatelessWidget {
         }
         if (!snapshot.hasData) return const LinearProgressIndicator();
 
-        final docs = snapshot.data!.docs.toList()
-          ..sort((a, b) {
-            final aDate =
-                (a['appointment_date'] as Timestamp).toDate();
-            final bDate =
-                (b['appointment_date'] as Timestamp).toDate();
-            return aDate.compareTo(bDate);
-          });
+        final now = DateTime.now();
+        final all = snapshot.data!.docs.toList();
 
-        if (docs.isEmpty) {
+        final upcoming = all
+            .where((d) =>
+                (d['appointment_date'] as Timestamp).toDate().isAfter(now))
+            .toList()
+          ..sort((a, b) =>
+              (a['appointment_date'] as Timestamp)
+                  .toDate()
+                  .compareTo((b['appointment_date'] as Timestamp).toDate()));
+
+        final past = all
+            .where((d) =>
+                !(d['appointment_date'] as Timestamp).toDate().isAfter(now))
+            .toList()
+          ..sort((a, b) =>
+              (b['appointment_date'] as Timestamp)
+                  .toDate()
+                  .compareTo((a['appointment_date'] as Timestamp).toDate()));
+
+        if (all.isEmpty) {
           return const Padding(
             padding: EdgeInsets.symmetric(vertical: 20),
             child: Text(
@@ -262,55 +260,150 @@ class PlanCareScreen extends StatelessWidget {
           );
         }
 
-        return ListView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: docs.length,
-          itemBuilder: (context, index) {
-            final doc  = docs[index];
-            final appt = doc.data() as Map<String, dynamic>;
-            final DateTime date =
-                (appt['appointment_date'] as Timestamp).toDate();
+        return Column(
+          children: [
+            // ── Próximas ─────────────────────────────────────────
+            if (upcoming.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Text(
+                  "No tienes citas próximas.",
+                  style: TextStyle(color: Colors.grey, fontSize: 14),
+                ),
+              )
+            else
+              ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: upcoming.length,
+                itemBuilder: (context, index) {
+                  final doc  = upcoming[index];
+                  final appt = doc.data() as Map<String, dynamic>;
+                  final date = (appt['appointment_date'] as Timestamp).toDate();
+                  return _appointmentCard(
+                    context, doc.id, appt, date, past: false,
+                  );
+                },
+              ),
 
-            return Card(
-              margin: const EdgeInsets.only(top: 12),
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(15),
-                side: BorderSide(color: Colors.grey.shade200),
-              ),
-              child: ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.redAccent.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(10),
+            // ── Pasadas (colapsable) ──────────────────────────────
+            if (past.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Theme(
+                data: Theme.of(context).copyWith(
+                  dividerColor: Colors.transparent,
+                ),
+                child: ExpansionTile(
+                  tilePadding: EdgeInsets.zero,
+                  childrenPadding: EdgeInsets.zero,
+                  title: Text(
+                    "Citas pasadas (${past.length})",
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey,
+                    ),
                   ),
-                  child: const Icon(Icons.event_note_rounded,
-                      color: Colors.redAccent),
-                ),
-                title: Text(
-                  appt['doctor_name'] ?? "Cita Médica",
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                subtitle: Text(
-                  "${appt['specialty']} • ${DateFormat('dd/MM/yyyy  HH:mm').format(date)}",
-                ),
-                trailing: _actionMenu(
-                  context,
-                  onEdit: () => _openAppointmentModal(
-                    context,
-                    docId: doc.id,
-                    data: appt,
-                  ),
-                  onDelete: () => _deleteAppointment(
-                      context, doc.id, appt['doctor_name'] ?? ''),
+                  iconColor: Colors.grey,
+                  collapsedIconColor: Colors.grey,
+                  children: past.map((doc) {
+                    final appt = doc.data() as Map<String, dynamic>;
+                    final date =
+                        (appt['appointment_date'] as Timestamp).toDate();
+                    return _appointmentCard(
+                      context, doc.id, appt, date, past: true,
+                    );
+                  }).toList(),
                 ),
               ),
-            );
-          },
+            ],
+          ],
         );
       },
+    );
+  }
+
+  Widget _appointmentCard(
+    BuildContext context,
+    String docId,
+    Map<String, dynamic> appt,
+    DateTime date, {
+    required bool past,
+  }) {
+    final iconColor   = past ? Colors.grey.shade400 : Colors.redAccent;
+    final iconBg      = past
+        ? Colors.grey.shade100
+        : Colors.redAccent.withValues(alpha: 0.1);
+    final titleStyle  = TextStyle(
+      fontWeight: FontWeight.bold,
+      color: past ? Colors.grey.shade500 : null,
+    );
+    final subtitleText =
+        "${appt['specialty'] ?? ''} • ${DateFormat('dd/MM/yyyy  HH:mm').format(date)}";
+
+    return Card(
+      margin: const EdgeInsets.only(top: 12),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(15),
+        side: BorderSide(
+          color: past ? Colors.grey.shade200 : Colors.grey.shade200,
+        ),
+      ),
+      child: ListTile(
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: iconBg,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(Icons.event_note_rounded, color: iconColor),
+        ),
+        title: Text(appt['doctor_name'] ?? "Cita Médica", style: titleStyle),
+        subtitle: past
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(subtitleText,
+                      style: TextStyle(color: Colors.grey.shade400)),
+                  const SizedBox(height: 4),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade200,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      "Completada",
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey.shade600,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              )
+            : Text(subtitleText),
+        trailing: past
+            ? IconButton(
+                icon: Icon(Icons.delete_outline,
+                    color: Colors.grey.shade400, size: 20),
+                onPressed: () =>
+                    _deleteAppointment(context, docId, appt['doctor_name'] ?? ''),
+              )
+            : _actionMenu(
+                context,
+                onEdit: () => _openAppointmentModal(
+                  context,
+                  docId: docId,
+                  data: appt,
+                ),
+                onDelete: () =>
+                    _deleteAppointment(context, docId, appt['doctor_name'] ?? ''),
+              ),
+      ),
     );
   }
 
@@ -351,6 +444,127 @@ class PlanCareScreen extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+// ── Tarjeta de medicamento con estado "Ya tomé" ──────────────────
+class _MedicationCard extends StatelessWidget {
+  final String docId;
+  final Map<String, dynamic> med;
+  final String uid;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  const _MedicationCard({
+    required this.docId,
+    required this.med,
+    required this.uid,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  Future<void> _markTaken(BuildContext context) async {
+    final baseId = docId.hashCode;
+    await NotificationService.markTaken(baseId, docId);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("¡Registro guardado! Recordatorios cancelados para hoy.")),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('medication_logs')
+          .where('user_id', isEqualTo: uid)
+          .where('medication_id', isEqualTo: docId)
+          .where('date', isEqualTo: _todayStr())
+          .limit(1)
+          .snapshots(),
+      builder: (context, snap) {
+        final taken = snap.hasData && snap.data!.docs.isNotEmpty;
+        return Card(
+          margin: const EdgeInsets.only(top: 10),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          child: Column(
+            children: [
+              ListTile(
+                leading: Icon(
+                  Icons.medication,
+                  color: taken ? Colors.green : Colors.blue,
+                ),
+                title: Text(
+                  med['name'] ?? '',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                subtitle: Text("${med['dosage'] ?? ''} • ${med['time'] ?? ''}"),
+                trailing: PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_vert, color: Colors.grey),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  onSelected: (value) {
+                    if (value == 'edit') onEdit();
+                    if (value == 'delete') onDelete();
+                  },
+                  itemBuilder: (_) => [
+                    const PopupMenuItem(
+                      value: 'edit',
+                      child: Row(children: [
+                        Icon(Icons.edit_outlined, size: 18, color: Colors.blueAccent),
+                        SizedBox(width: 10),
+                        Text("Editar"),
+                      ]),
+                    ),
+                    const PopupMenuItem(
+                      value: 'delete',
+                      child: Row(children: [
+                        Icon(Icons.delete_outline, size: 18, color: Colors.redAccent),
+                        SizedBox(width: 10),
+                        Text("Eliminar", style: TextStyle(color: Colors.redAccent)),
+                      ]),
+                    ),
+                  ],
+                ),
+              ),
+              if (!taken)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () => _markTaken(context),
+                      icon: const Icon(Icons.check_circle_outline, size: 18),
+                      label: const Text("Ya tomé mi medicina"),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.green,
+                        side: const BorderSide(color: Colors.green),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    ),
+                  ),
+                )
+              else
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.check_circle, color: Colors.green, size: 18),
+                      const SizedBox(width: 6),
+                      Text(
+                        "Tomada hoy",
+                        style: TextStyle(color: Colors.green.shade700, fontSize: 13),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

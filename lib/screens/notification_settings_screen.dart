@@ -147,13 +147,43 @@ class _NotificationSettingsScreenState
                 const SizedBox(height: 8),
                 _card(
                   isDark,
-                  child: const ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.notifications_active_outlined),
-                    title: Text('Recordatorio automático'),
-                    subtitle: Text(
-                      'Recibirás una notificación 24 horas antes de cada cita médica.',
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Aviso anticipado',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      _chipSelector(
+                        options: const [1, 12, 24],
+                        labels: const ['1 hora antes', '12 horas antes', '24 horas antes'],
+                        selected: _prefs.appointmentAdvanceHours,
+                        color: color,
+                        onSelected: (v) =>
+                            _save(_prefs.copyWith(appointmentAdvanceHours: v)),
+                      ),
+                      const Divider(height: 24),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text(
+                          'Recordatorios antes de la cita',
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        subtitle: const Text(
+                          'Recibirás notificaciones cada 5 minutos durante los 30 minutos previos a tu cita',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                        value: _prefs.appointmentReminders,
+                        activeThumbColor: color,
+                        onChanged: (v) =>
+                            _save(_prefs.copyWith(appointmentReminders: v)),
+                      ),
+                    ],
                   ),
                 ),
 

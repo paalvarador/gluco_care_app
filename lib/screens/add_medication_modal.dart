@@ -90,6 +90,7 @@ class _AddMedicationModalState extends State<AddMedicationModal> {
             _nameController.text,
             _doseController.text,
             scheduledDate,
+            medicationDocId: widget.docId!,
           );
         } else {
           await NotificationService.scheduleRecurringMedication(
@@ -98,6 +99,7 @@ class _AddMedicationModalState extends State<AddMedicationModal> {
             _doseController.text,
             scheduledDate,
             _selectedInterval,
+            medicationDocId: widget.docId!,
           );
         }
       } else {
@@ -109,11 +111,13 @@ class _AddMedicationModalState extends State<AddMedicationModal> {
           await NotificationService.scheduleMedication(
             docRef.id.hashCode, _nameController.text,
             _doseController.text, scheduledDate,
+            medicationDocId: docRef.id,
           );
         } else {
           await NotificationService.scheduleRecurringMedication(
             docRef.id.hashCode, _nameController.text,
             _doseController.text, scheduledDate, _selectedInterval,
+            medicationDocId: docRef.id,
           );
         }
       }
